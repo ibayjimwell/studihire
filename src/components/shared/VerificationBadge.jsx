@@ -25,3 +25,4 @@ export default function VerificationBadge({ status, size = 'sm' }) {
     </span>
   );
 }
+

@@ -24,3 +24,4 @@ export default function StarRating({ rating = 0, max = 5, size = 'sm', showValue
     </div>
   );
 }
+

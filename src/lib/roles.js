@@ -79,3 +79,4 @@ export const VERIFICATION_BADGE_CONFIG = {
   rejected: { label: 'Rejected', color: 'bg-red-100 text-red-700', icon: '✗' },
   resubmit_required: { label: 'Resubmit Required', color: 'bg-orange-100 text-orange-700', icon: '↺' },
 };
+

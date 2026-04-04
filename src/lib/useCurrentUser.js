@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { base44 } from '@/api/base44Client';
+import { useState, useEffect } from "react";
+import { base44 } from "@/api/mockBase44Client";
 
 /**
  * Hook: useCurrentUser
@@ -15,7 +15,8 @@ export function useCurrentUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    base44.auth.me()
+    base44.auth
+      .me()
       .then(setUser)
       .catch(() => setUser(null))
       .finally(() => setLoading(false));

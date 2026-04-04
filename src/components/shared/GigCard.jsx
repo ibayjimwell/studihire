@@ -81,3 +81,4 @@ export default function GigCard({ gig, student }) {
     </Card>
   );
 }
+

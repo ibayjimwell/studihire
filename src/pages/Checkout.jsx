@@ -1,47 +1,65 @@
-import { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import Navbar from '@/components/layout/Navbar';
-import { base44 } from '@/api/base44Client';
-import { useCurrentUser } from '@/lib/useCurrentUser';
-import { ShieldCheck, Clock, RefreshCw, Loader2, CreditCard, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import Navbar from "@/components/layout/Navbar";
+import { base44 } from "@/api/mockBase44Client";
+import { useCurrentUser } from "@/lib/useCurrentUser";
+import {
+  ShieldCheck,
+  Clock,
+  RefreshCw,
+  Loader2,
+  CreditCard,
+  CheckCircle,
+  AlertCircle,
+} from "lucide-react";
 
-const PAYMONGO_PUBLIC_KEY = import.meta.env.VITE_PAYMONGO_PUBLIC_KEY || '';
-const PLATFORM_FEE_PERCENT = 0.10;
+const PAYMONGO_PUBLIC_KEY = import.meta.env.VITE_PAYMONGO_PUBLIC_KEY || "";
+const PLATFORM_FEE_PERCENT = 0.1;
 
 export default function Checkout() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useCurrentUser();
 
-  const gigId = params.get('gig_id');
-  const pkgIndex = parseInt(params.get('pkg') || '0', 10);
+  const gigId = params.get("gig_id");
+  const pkgIndex = parseInt(params.get("pkg") || "0", 10);
 
   const [gig, setGig] = useState(null);
   const [student, setStudent] = useState(null);
-  const [requirements, setRequirements] = useState('');
+  const [requirements, setRequirements] = useState("");
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [clientProfile, setClientProfile] = useState(null);
 
   useEffect(() => {
     if (!gigId) return;
-    base44.entities.Gig.filter({ id: gigId }, '-created_date', 1).then(async ([g]) => {
-      setGig(g);
-      if (g?.student_id) {
-        const profiles = await base44.entities.StudentProfile.filter({ user_id: g.student_id }, '-created_date', 1);
-        setStudent(profiles[0] || null);
-      }
-      setLoading(false);
-    });
+    base44.entities.Gig.filter({ id: gigId }, "-created_date", 1).then(
+      async ([g]) => {
+        setGig(g);
+        if (g?.student_id) {
+          const profiles = await base44.entities.StudentProfile.filter(
+            { user_id: g.student_id },
+            "-created_date",
+            1,
+          );
+          setStudent(profiles[0] || null);
+        }
+        setLoading(false);
+      },
+    );
   }, [gigId]);
 
   useEffect(() => {
     if (!user) return;
-    base44.entities.ClientProfile.filter({ user_id: user.id }, '-created_date', 1).then(p => {
+    base44.entities.ClientProfile.filter(
+      { user_id: user.id },
+      "-created_date",
+      1,
+    ).then((p) => {
       setClientProfile(p[0] || null);
     });
   }, [user]);
@@ -54,10 +72,10 @@ export default function Checkout() {
   const handlePayWithPayMongo = async () => {
     if (!user || !gig || !pkg) return;
     if (!requirements.trim()) {
-      setError('Please describe your project requirements for the student.');
+      setError("Please describe your project requirements for the student.");
       return;
     }
-    setError('');
+    setError("");
     setPaying(true);
 
     // Create a pending order first
@@ -70,52 +88,55 @@ export default function Checkout() {
       client_id: user.id,
       client_name: user.full_name,
       student_id: gig.student_id,
-      student_name: student?.full_name || '',
+      student_name: student?.full_name || "",
       package_name: pkg.name,
       package_index: pkgIndex,
       amount,
       delivery_days: pkg.delivery_days,
       revisions: pkg.revisions,
       requirements,
-      status: 'awaiting_payment',
+      status: "awaiting_payment",
       due_date: dueDate.toISOString(),
     });
 
     // Create PayMongo checkout session
     try {
-      const response = await fetch('https://api.paymongo.com/v1/checkout_sessions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Basic ${btoa(PAYMONGO_PUBLIC_KEY + ':')}`,
-        },
-        body: JSON.stringify({
-          data: {
-            attributes: {
-              line_items: [
-                {
-                  currency: 'PHP',
-                  amount: amount * 100,
-                  name: `${gig.title} - ${pkg.name}`,
-                  quantity: 1,
+      const response = await fetch(
+        "https://api.paymongo.com/v1/checkout_sessions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Basic ${btoa(PAYMONGO_PUBLIC_KEY + ":")}`,
+          },
+          body: JSON.stringify({
+            data: {
+              attributes: {
+                line_items: [
+                  {
+                    currency: "PHP",
+                    amount: amount * 100,
+                    name: `${gig.title} - ${pkg.name}`,
+                    quantity: 1,
+                  },
+                ],
+                payment_method_types: ["card", "gcash", "paymaya", "grab_pay"],
+                success_url: `${window.location.origin}/order/${order.id}?payment=success`,
+                cancel_url: `${window.location.origin}/checkout?gig_id=${gigId}&pkg=${pkgIndex}&cancelled=1`,
+                metadata: {
+                  order_id: order.id,
+                  client_id: user.id,
+                  student_id: gig.student_id,
                 },
-              ],
-              payment_method_types: ['card', 'gcash', 'paymaya', 'grab_pay'],
-              success_url: `${window.location.origin}/order/${order.id}?payment=success`,
-              cancel_url: `${window.location.origin}/checkout?gig_id=${gigId}&pkg=${pkgIndex}&cancelled=1`,
-              metadata: {
-                order_id: order.id,
-                client_id: user.id,
-                student_id: gig.student_id,
               },
             },
-          },
-        }),
-      });
+          }),
+        },
+      );
 
       if (!response.ok) {
         const errData = await response.json();
-        throw new Error(errData?.errors?.[0]?.detail || 'PayMongo error');
+        throw new Error(errData?.errors?.[0]?.detail || "PayMongo error");
       }
 
       const data = await response.json();
@@ -139,54 +160,60 @@ export default function Checkout() {
           amount,
           platform_fee: platformFee,
           net_amount: netAmount,
-          currency: 'PHP',
-          status: 'paid',
+          currency: "PHP",
+          status: "paid",
           description: `${gig.title} - ${pkg.name}`,
-          payment_method: 'demo',
+          payment_method: "demo",
         });
         await base44.entities.Order.update(order.id, {
-          status: 'pending',
+          status: "pending",
           payment_id: payment.id,
         });
         await base44.entities.Notification.create({
           user_id: gig.student_id,
-          type: 'gig_order',
-          title: '🎉 New Order!',
+          type: "gig_order",
+          title: "🎉 New Order!",
           body: `${user.full_name} ordered your gig: ${gig.title}`,
           link: `/order/${order.id}`,
           is_read: false,
         });
         navigate(`/order/${order.id}?payment=success`);
       } else {
-        setError(err.message || 'Payment failed. Please try again.');
-        await base44.entities.Order.update(order.id, { status: 'cancelled' });
+        setError(err.message || "Payment failed. Please try again.");
+        await base44.entities.Order.update(order.id, { status: "cancelled" });
       }
     }
     setPaying(false);
   };
 
-  if (loading) return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+  if (loading)
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        </div>
       </div>
-    </div>
-  );
+    );
 
-  if (!gig || !pkg) return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="text-center py-20 text-muted-foreground">Gig or package not found.</div>
-    </div>
-  );
+  if (!gig || !pkg)
+    return (
+      <div className="min-h-screen bg-background">
+        <Navbar />
+        <div className="text-center py-20 text-muted-foreground">
+          Gig or package not found.
+        </div>
+      </div>
+    );
 
   return (
     <div className="min-h-screen bg-muted/30">
       <Navbar />
       <div className="max-w-3xl mx-auto px-4 py-10">
         <h1 className="text-2xl font-bold mb-2">Checkout</h1>
-        <p className="text-muted-foreground text-sm mb-8">Review your order and complete payment securely via PayMongo.</p>
+        <p className="text-muted-foreground text-sm mb-8">
+          Review your order and complete payment securely via PayMongo.
+        </p>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
           {/* Left: Requirements */}
@@ -196,26 +223,56 @@ export default function Checkout() {
                 <CardTitle className="text-base">Order Details</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Gig</span><span className="font-medium max-w-[200px] text-right">{gig.title}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Package</span><span className="font-medium">{pkg.name}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Delivery</span><span className="flex items-center gap-1"><Clock className="w-3 h-3" />{pkg.delivery_days} days</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Revisions</span><span className="flex items-center gap-1"><RefreshCw className="w-3 h-3" />{pkg.revisions}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Freelancer</span><span className="font-medium">{student?.full_name || '—'}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gig</span>
+                  <span className="font-medium max-w-[200px] text-right">
+                    {gig.title}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Package</span>
+                  <span className="font-medium">{pkg.name}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Delivery</span>
+                  <span className="flex items-center gap-1">
+                    <Clock className="w-3 h-3" />
+                    {pkg.delivery_days} days
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Revisions</span>
+                  <span className="flex items-center gap-1">
+                    <RefreshCw className="w-3 h-3" />
+                    {pkg.revisions}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Freelancer</span>
+                  <span className="font-medium">
+                    {student?.full_name || "—"}
+                  </span>
+                </div>
               </CardContent>
             </Card>
 
             <Card className="border-border">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base">Project Requirements</CardTitle>
+                <CardTitle className="text-base">
+                  Project Requirements
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <Textarea
                   placeholder="Describe exactly what you need. Include any files, links, or instructions for the student..."
                   rows={5}
                   value={requirements}
-                  onChange={e => setRequirements(e.target.value)}
+                  onChange={(e) => setRequirements(e.target.value)}
                 />
-                <p className="text-xs text-muted-foreground mt-2">This will be shared with the student when your order is confirmed.</p>
+                <p className="text-xs text-muted-foreground mt-2">
+                  This will be shared with the student when your order is
+                  confirmed.
+                </p>
               </CardContent>
             </Card>
 
@@ -230,7 +287,9 @@ export default function Checkout() {
               <div className="flex items-start gap-2 p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                 <AlertCircle className="w-4 h-4 text-yellow-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-yellow-700">
-                  <strong>Demo Mode:</strong> No PayMongo key configured. Payment will be simulated. Add <code>VITE_PAYMONGO_PUBLIC_KEY</code> to enable real payments.
+                  <strong>Demo Mode:</strong> No PayMongo key configured.
+                  Payment will be simulated. Add{" "}
+                  <code>VITE_PAYMONGO_PUBLIC_KEY</code> to enable real payments.
                 </p>
               </div>
             )}
@@ -240,8 +299,14 @@ export default function Checkout() {
               onClick={handlePayWithPayMongo}
               disabled={paying}
             >
-              {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
-              {paying ? 'Processing...' : `Pay ₱${amount.toLocaleString()} via PayMongo`}
+              {paying ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <CreditCard className="w-5 h-5" />
+              )}
+              {paying
+                ? "Processing..."
+                : `Pay ₱${amount.toLocaleString()} via PayMongo`}
             </Button>
           </div>
 
@@ -252,13 +317,25 @@ export default function Checkout() {
                 <CardTitle className="text-base">Payment Summary</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
-                <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>₱{amount.toLocaleString()}</span></div>
-                <div className="flex justify-between"><span className="text-muted-foreground">Platform fee (10%)</span><span>₱{platformFee.toLocaleString()}</span></div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span>₱{amount.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">
+                    Platform fee (10%)
+                  </span>
+                  <span>₱{platformFee.toLocaleString()}</span>
+                </div>
                 <div className="border-t border-border pt-3 flex justify-between font-bold text-base">
                   <span>Total</span>
-                  <span className="text-primary">₱{amount.toLocaleString()}</span>
+                  <span className="text-primary">
+                    ₱{amount.toLocaleString()}
+                  </span>
                 </div>
-                <p className="text-xs text-muted-foreground">Platform fee is deducted from student's payout.</p>
+                <p className="text-xs text-muted-foreground">
+                  Platform fee is deducted from student's payout.
+                </p>
 
                 <div className="pt-2 space-y-2">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
