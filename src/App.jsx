@@ -23,7 +23,7 @@ import AdminDisputes from './pages/admin/Disputes';
 import AdminSettings from './pages/admin/Settings';
 import GigsBrowse from './pages/GigsBrowse';
 import GigDetail from './pages/GigDetail';
-import GigCreate from './pages/student/GigCreate';
+import GigCreate from './pages/student/GigCreate.jsx';
 import ProjectsBrowse from './pages/ProjectsBrowse';
 import ProjectCreate from './pages/client/ProjectCreate';
 import Messages from './pages/Messages';
