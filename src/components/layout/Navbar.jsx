@@ -20,11 +20,13 @@ import {
 } from "lucide-react";
 import { base44 } from "@/api/mockBase44Client";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { useAuth } from "@/lib/AuthContext";
 import NotificationsPopover from "@/components/shared/NotificationsPopover";
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user } = useCurrentUser();
+  const { switchUser } = useAuth();
   const location = useLocation();
 
   const navLinks = [
@@ -119,6 +121,62 @@ export default function Navbar() {
                       <Link to="/messages">Messages</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
+                    <div className="px-2 py-2">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">
+                        Switch Role
+                      </p>
+                      <div className="space-y-1">
+                        <button
+                          onClick={() => switchUser("student")}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                            user.role === "student"
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <GraduationCap className="w-4 h-4" />
+                          Student
+                          {user.role === "student" && (
+                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
+                              ✓
+                            </Badge>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => switchUser("client")}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                            user.role === "client"
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <Briefcase className="w-4 h-4" />
+                          Client
+                          {user.role === "client" && (
+                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
+                              ✓
+                            </Badge>
+                          )}
+                        </button>
+                        <button
+                          onClick={() => switchUser("admin")}
+                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                            user.role === "admin"
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "text-foreground hover:bg-muted"
+                          }`}
+                        >
+                          <ShieldCheck className="w-4 h-4" />
+                          Admin
+                          {user.role === "admin" && (
+                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
+                              ✓
+                            </Badge>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => base44.auth.logout("/")}
                       className="text-destructive"
@@ -159,17 +217,76 @@ export default function Navbar() {
 
         {/* Mobile menu */}
         {mobileOpen && (
-          <div className="md:hidden py-3 border-t border-border">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                to={link.href}
-                className="block px-4 py-2.5 text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg"
-                onClick={() => setMobileOpen(false)}
-              >
-                {link.label}
-              </Link>
-            ))}
+          <div className="md:hidden py-4 px-4 border-t border-border bg-white/50 backdrop-blur">
+            <nav className="space-y-2">
+              {navLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  to={link.href}
+                  className={`block px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    isActive(link.href)
+                      ? "text-primary bg-secondary"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                  }`}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+            {user && (
+              <div className="mt-4 pt-4 border-t border-border">
+                <div className="px-4 py-2 mb-2">
+                  <p className="text-xs font-semibold text-muted-foreground mb-2">
+                    Switch Role
+                  </p>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => {
+                        switchUser("student");
+                        setMobileOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                        user.role === "student"
+                          ? "bg-primary text-primary-foreground font-medium"
+                          : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <GraduationCap className="w-4 h-4" />
+                      Student
+                    </button>
+                    <button
+                      onClick={() => {
+                        switchUser("client");
+                        setMobileOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                        user.role === "client"
+                          ? "bg-primary text-primary-foreground font-medium"
+                          : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <Briefcase className="w-4 h-4" />
+                      Client
+                    </button>
+                    <button
+                      onClick={() => {
+                        switchUser("admin");
+                        setMobileOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
+                        user.role === "admin"
+                          ? "bg-primary text-primary-foreground font-medium"
+                          : "text-foreground hover:bg-muted"
+                      }`}
+                    >
+                      <ShieldCheck className="w-4 h-4" />
+                      Admin
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

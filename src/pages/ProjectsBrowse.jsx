@@ -48,26 +48,26 @@ export default function ProjectsBrowse() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <div className="bg-gradient-to-r from-blue-50 to-accent py-10 px-4 border-b border-border">
+      <div className="bg-gradient-to-r from-blue-50 to-accent py-8 md:py-10 px-4 sm:px-6 lg:px-8 border-b border-border">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
             Find Projects
           </h1>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-muted-foreground mb-6 text-sm sm:text-base">
             Browse open projects posted by verified clients
           </p>
           <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1 max-w-lg">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search projects or skills..."
-                className="pl-9 bg-white"
+                placeholder="Search projects or skills...\n"
+                className="pl-9 bg-white text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <Select value={budgetType} onValueChange={setBudgetType}>
-              <SelectTrigger className="w-36 bg-white">
+              <SelectTrigger className="w-full sm:w-36 bg-white text-sm">
                 <SelectValue placeholder="Budget type" />
               </SelectTrigger>
               <SelectContent>
@@ -80,8 +80,8 @@ export default function ProjectsBrowse() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="flex gap-2 flex-wrap mb-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
+        <div className="flex gap-2 flex-wrap mb-6 overflow-x-auto pb-2">
           <button
             onClick={() => setCategory("")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${!category ? "bg-primary text-primary-foreground" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}

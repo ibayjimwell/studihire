@@ -1,26 +1,11 @@
-import { useState, useEffect } from "react";
-import { base44 } from "@/api/mockBase44Client";
+import { useAuth } from "./AuthContext";
 
 /**
  * Hook: useCurrentUser
- * Returns the current authenticated user and their role-specific profile.
- *
- * NOTE FOR NEXT.JS MIGRATION:
- * Replace this with your custom JWT/session hook.
- * e.g., import { useSession } from 'next-auth/react'
- * or your own useAuth() hook that reads from cookie/JWT.
+ * Returns the current authenticated user from AuthContext.
+ * Uses the AuthContext to get the current user and respect role switching.
  */
 export function useCurrentUser() {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    base44.auth
-      .me()
-      .then(setUser)
-      .catch(() => setUser(null))
-      .finally(() => setLoading(false));
-  }, []);
-
+  const { user, loading } = useAuth();
   return { user, loading };
 }

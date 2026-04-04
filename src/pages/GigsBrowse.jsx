@@ -72,26 +72,26 @@ export default function GigsBrowse() {
       <Navbar />
 
       {/* Header */}
-      <div className="bg-gradient-to-r from-primary/10 to-accent py-10 px-4 border-b border-border">
+      <div className="bg-gradient-to-r from-primary/10 to-accent py-8 md:py-10 px-4 sm:px-6 lg:px-8 border-b border-border">
         <div className="max-w-6xl mx-auto">
-          <h1 className="text-3xl font-bold text-foreground mb-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mb-2">
             Browse Student Gigs
           </h1>
-          <p className="text-muted-foreground mb-6">
+          <p className="text-muted-foreground mb-6 text-sm sm:text-base">
             Hire verified students for your projects
           </p>
-          <div className="flex gap-3">
-            <div className="relative flex-1 max-w-lg">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Search gigs or skills..."
-                className="pl-9 bg-white"
+                className="pl-9 bg-white text-sm"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <Select value={sort} onValueChange={setSort}>
-              <SelectTrigger className="w-44 bg-white">
+              <SelectTrigger className="w-full sm:w-44 bg-white text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -104,9 +104,9 @@ export default function GigsBrowse() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
         {/* Category filters */}
-        <div className="flex gap-2 flex-wrap mb-6">
+        <div className="flex gap-2 flex-wrap mb-6 overflow-x-auto pb-2">
           <button
             onClick={() => setCategory("")}
             className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${!category ? "bg-primary text-primary-foreground shadow-sm" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}
