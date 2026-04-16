@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,16 +16,15 @@ import {
   Briefcase,
   GraduationCap,
   ShieldCheck,
+  LogOut,
 } from "lucide-react";
-import { base44 } from "@/api/mockBase44Client";
-import { useCurrentUser } from "@/lib/useCurrentUser";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationsPopover from "@/components/shared/NotificationsPopover";
 
 export default function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { user } = useCurrentUser();
-  const { switchUser } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const location = useLocation();
 
   const navLinks = [
@@ -36,6 +34,11 @@ export default function Navbar() {
   ];
 
   const isActive = (href) => location.pathname === href;
+
+  const handleLogout = async () => {
+    await logout();
+    navigate("/auth/login");
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur border-b border-border shadow-sm">
@@ -89,7 +92,18 @@ export default function Navbar() {
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     </button>
                   </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuContent align="end" className="w-56">
+                    {/* User Info */}
+                    <div className="px-2 py-1.5 border-b border-border">
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        Signed in as
+                      </p>
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {user.email}
+                      </p>
+                    </div>
+
+                    {/* Role-specific items */}
                     {user.role === "admin" && (
                       <DropdownMenuItem asChild>
                         <Link to="/admin" className="flex items-center gap-2">
@@ -100,15 +114,23 @@ export default function Navbar() {
                     {user.role === "student" && (
                       <DropdownMenuItem asChild>
                         <Link
-                          to="/student/my-orders"
+                          to="/student/dashboard"
                           className="flex items-center gap-2"
                         >
-                          <Briefcase className="w-4 h-4" /> My Orders
+                          <GraduationCap className="w-4 h-4" /> My Dashboard
                         </Link>
                       </DropdownMenuItem>
                     )}
                     {user.role === "client" && (
                       <>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            to="/client/dashboard"
+                            className="flex items-center gap-2"
+                          >
+                            <Briefcase className="w-4 h-4" /> Dashboard
+                          </Link>
+                        </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link
                             to="/client/orders"
@@ -131,66 +153,11 @@ export default function Navbar() {
                       <Link to="/messages">Messages</Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <div className="px-2 py-2">
-                      <p className="text-xs font-semibold text-muted-foreground mb-2">
-                        Switch Role
-                      </p>
-                      <div className="space-y-1">
-                        <button
-                          onClick={() => switchUser("student")}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                            user.role === "student"
-                              ? "bg-primary text-primary-foreground font-medium"
-                              : "text-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <GraduationCap className="w-4 h-4" />
-                          Student
-                          {user.role === "student" && (
-                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
-                              ✓
-                            </Badge>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => switchUser("client")}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                            user.role === "client"
-                              ? "bg-primary text-primary-foreground font-medium"
-                              : "text-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <Briefcase className="w-4 h-4" />
-                          Client
-                          {user.role === "client" && (
-                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
-                              ✓
-                            </Badge>
-                          )}
-                        </button>
-                        <button
-                          onClick={() => switchUser("admin")}
-                          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                            user.role === "admin"
-                              ? "bg-primary text-primary-foreground font-medium"
-                              : "text-foreground hover:bg-muted"
-                          }`}
-                        >
-                          <ShieldCheck className="w-4 h-4" />
-                          Admin
-                          {user.role === "admin" && (
-                            <Badge className="ml-auto h-5 w-5 rounded-full flex items-center justify-center p-0 text-xs">
-                              ✓
-                            </Badge>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    <DropdownMenuSeparator />
                     <DropdownMenuItem
-                      onClick={() => base44.auth.logout("/")}
-                      className="text-destructive"
+                      onClick={handleLogout}
+                      className="text-destructive focus:text-destructive"
                     >
+                      <LogOut className="w-4 h-4 mr-2" />
                       Sign Out
                     </DropdownMenuItem>
                   </DropdownMenuContent>
@@ -199,14 +166,14 @@ export default function Navbar() {
             ) : (
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="sm" asChild>
-                  <Link to="/login">Log In</Link>
+                  <Link to="/auth/login">Log In</Link>
                 </Button>
                 <Button
                   size="sm"
                   className="gradient-primary text-white border-0"
                   asChild
                 >
-                  <Link to="/signup">Get Started</Link>
+                  <Link to="/auth/signup">Get Started</Link>
                 </Button>
               </div>
             )}
@@ -245,55 +212,18 @@ export default function Navbar() {
               ))}
             </nav>
             {user && (
-              <div className="mt-4 pt-4 border-t border-border">
-                <div className="px-4 py-2 mb-2">
+              <div className="mt-4 pt-4 border-t border-border space-y-2">
+                <div className="px-4 py-2">
                   <p className="text-xs font-semibold text-muted-foreground mb-2">
-                    Switch Role
+                    Account
                   </p>
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => {
-                        switchUser("student");
-                        setMobileOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                        user.role === "student"
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-foreground hover:bg-muted"
-                      }`}
-                    >
-                      <GraduationCap className="w-4 h-4" />
-                      Student
-                    </button>
-                    <button
-                      onClick={() => {
-                        switchUser("client");
-                        setMobileOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                        user.role === "client"
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-foreground hover:bg-muted"
-                      }`}
-                    >
-                      <Briefcase className="w-4 h-4" />
-                      Client
-                    </button>
-                    <button
-                      onClick={() => {
-                        switchUser("admin");
-                        setMobileOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm transition-colors ${
-                        user.role === "admin"
-                          ? "bg-primary text-primary-foreground font-medium"
-                          : "text-foreground hover:bg-muted"
-                      }`}
-                    >
-                      <ShieldCheck className="w-4 h-4" />
-                      Admin
-                    </button>
-                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-destructive hover:bg-red-50 transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Sign Out
+                  </button>
                 </div>
               </div>
             )}

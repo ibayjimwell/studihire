@@ -1,10 +1,22 @@
 import { Toaster } from "@/components/ui/toaster";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClientInstance } from "@/lib/query-client";
-import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
+import {
+  BrowserRouter as Router,
+  Route,
+  Routes,
+  Navigate,
+} from "react-router-dom";
 import PageNotFound from "./lib/PageNotFound";
 import { AuthProvider, useAuth } from "@/lib/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import UserNotRegisteredError from "@/components/UserNotRegisteredError";
+
+// Auth Pages
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 
 // Pages
 import Home from "./pages/Home";
@@ -60,40 +72,227 @@ const AuthenticatedApp = () => {
       <Route path="/gigs/:id" element={<GigDetail />} />
       <Route path="/projects" element={<ProjectsBrowse />} />
 
+      {/* Auth Routes - Public */}
+      <Route
+        path="/auth/login"
+        element={user ? <Navigate to="/" /> : <Login />}
+      />
+      <Route
+        path="/auth/signup"
+        element={user ? <Navigate to="/" /> : <Signup />}
+      />
+      <Route path="/auth/forgot-password" element={<ForgotPassword />} />
+      <Route path="/auth/reset-password" element={<ResetPassword />} />
+
       {/* Onboarding */}
-      <Route path="/student/onboarding" element={<StudentOnboarding />} />
-      <Route path="/client/onboarding" element={<ClientOnboarding />} />
+      <Route
+        path="/student/onboarding"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentOnboarding />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/onboarding"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientOnboarding />
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Student */}
-      <Route path="/student/dashboard" element={<StudentDashboard />} />
-      <Route path="/student/profile" element={<StudentProfile />} />
-      <Route path="/student/gigs/new" element={<GigCreate />} />
-      <Route path="/student/payments" element={<Payments role="student" />} />
-      <Route path="/student/my-orders" element={<StudentMyOrders />} />
-      <Route path="/student/orders/:id" element={<StudentOrderWorkspace />} />
+      {/* Student - Protected */}
+      <Route
+        path="/student/dashboard"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/profile"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/gigs/new"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <GigCreate />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/payments"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <Payments role="student" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/my-orders"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentMyOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/orders/:id"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentOrderWorkspace />
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Client */}
-      <Route path="/client/dashboard" element={<ClientDashboard />} />
-      <Route path="/client/projects/new" element={<ProjectCreate />} />
-      <Route path="/client/payments" element={<Payments role="client" />} />
-      <Route path="/client/orders" element={<ClientMyOrders />} />
-      <Route path="/client/applicants" element={<ClientApplicants />} />
+      {/* Client - Protected */}
+      <Route
+        path="/client/dashboard"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/projects/new"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ProjectCreate />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/payments"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <Payments role="client" />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/orders"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientMyOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/applicants"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientApplicants />
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Shared */}
-      <Route path="/messages" element={<Messages />} />
-      <Route path="/checkout" element={<Checkout />} />
-      <Route path="/order/:id" element={<OrderWorkspace />} />
+      {/* Shared - Protected */}
+      <Route
+        path="/messages"
+        element={
+          <ProtectedRoute>
+            <Messages />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/checkout"
+        element={
+          <ProtectedRoute>
+            <Checkout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/order/:id"
+        element={
+          <ProtectedRoute>
+            <OrderWorkspace />
+          </ProtectedRoute>
+        }
+      />
 
-      {/* Admin */}
-      <Route path="/admin" element={<AdminDashboard />} />
-      <Route path="/admin/verifications" element={<AdminVerifications />} />
-      <Route path="/admin/users" element={<AdminUsers />} />
-      <Route path="/admin/gigs" element={<AdminGigs />} />
-      <Route path="/admin/projects" element={<AdminProjects />} />
-      <Route path="/admin/payments" element={<AdminPayments />} />
-      <Route path="/admin/reports" element={<AdminReports />} />
-      <Route path="/admin/disputes" element={<AdminDisputes />} />
-      <Route path="/admin/settings" element={<AdminSettings />} />
+      {/* Admin - Protected */}
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/verifications"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminVerifications />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/users"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminUsers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/gigs"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminGigs />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/projects"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminProjects />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/payments"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminPayments />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/reports"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminReports />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/disputes"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminDisputes />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin/settings"
+        element={
+          <ProtectedRoute requiredRole="admin">
+            <AdminSettings />
+          </ProtectedRoute>
+        }
+      />
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

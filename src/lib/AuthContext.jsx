@@ -1,66 +1,60 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import { base44 } from "@/api/mockBase44Client";
+import { authOnAuthStateChange, authLogout } from "@/utils/authUtils";
 
-const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // Initialize auth and listen for session changes
   useEffect(() => {
-    const initAuth = async () => {
-      try {
-        // Check if userRole is specified in URL params or localStorage
-        const params = new URLSearchParams(window.location.search);
-        const userRole =
-          params.get("userRole") ||
-          localStorage.getItem("mockUserRole") ||
-          "student";
-        localStorage.setItem("mockUserRole", userRole);
-
-        // Get the appropriate user based on role
-        let currentUser;
-        if (userRole === "admin") {
-          currentUser = {
-            id: "user-3",
-            email: "admin@example.com",
-            full_name: "Admin User",
-            role: "admin",
-          };
-        } else if (userRole === "client") {
-          currentUser = {
-            id: "user-2",
-            email: "jane.smith@example.com",
-            full_name: "Jane Smith",
-            role: "client",
-          };
-        } else {
-          currentUser = {
-            id: "user-1",
-            email: "john.doe@example.com",
-            full_name: "John Doe",
-            role: "student",
-          };
-        }
-        setUser(currentUser);
-      } catch (error) {
-        console.error("Auth error:", error);
+    // Subscribe to auth state changes
+    const unsubscribe = authOnAuthStateChange((authUser) => {
+      if (authUser) {
+        // User is signed in
+        setUser({
+          id: authUser.id,
+          email: authUser.email,
+          full_name: authUser.user_metadata?.full_name || "",
+          role: authUser.user_metadata?.role || "student",
+          avatar_url: authUser.user_metadata?.avatar_url || null,
+          onboarding_completed:
+            authUser.user_metadata?.onboarding_completed || false,
+          profile_verified: authUser.user_metadata?.profile_verified || false,
+        });
+      } else {
+        // User is signed out
         setUser(null);
-      } finally {
-        setLoading(false);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      // Unsubscribe from auth state changes on cleanup
+      if (unsubscribe) {
+        unsubscribe();
       }
     };
-
-    initAuth();
   }, []);
 
-  const switchUser = (role) => {
-    localStorage.setItem("mockUserRole", role);
-    window.location.href = `${window.location.pathname}?userRole=${role}`;
+  const logout = async () => {
+    try {
+      await authLogout();
+      setUser(null);
+    } catch (error) {
+      console.error("Logout error:", error);
+    }
+  };
+
+  const updateUserMetadata = (updates) => {
+    setUser((prev) => (prev ? { ...prev, ...updates } : null));
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, switchUser }}>
+    <AuthContext.Provider
+      value={{ user, loading, setUser, logout, updateUserMetadata }}
+    >
       {children}
     </AuthContext.Provider>
   );
