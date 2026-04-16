@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { base44 } from "@/api/mockBase44Client";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import {
   Package,
@@ -14,35 +13,28 @@ import {
   Clock,
 } from "lucide-react";
 import { format } from "date-fns";
+import { STATUS_DISPLAY_CONFIG } from "@/lib/orderStatusConfig";
 
 const sidebarLinks = [
-  { href: "/client/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/client/projects", label: "My Projects", icon: Briefcase },
   { href: "/client/orders", label: "My Orders", icon: Package },
+  { href: "/client/applicants", label: "Applicants", icon: Briefcase },
   { href: "/gigs", label: "Browse Gigs", icon: Search },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/client/payments", label: "Payments", icon: DollarSign },
 ];
 
-const STATUS_CONFIG = {
-  awaiting_payment: {
-    label: "Awaiting Payment",
-    color: "bg-gray-100 text-gray-700",
+// Map shared config to local format
+const STATUS_CONFIG = Object.entries(STATUS_DISPLAY_CONFIG).reduce(
+  (acc, [key, config]) => {
+    acc[key] = {
+      label: config.label,
+      color: config.badge,
+    };
+    return acc;
   },
-  pending: { label: "Pending", color: "bg-yellow-100 text-yellow-700" },
-  in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700" },
-  revision_requested: {
-    label: "Revision",
-    color: "bg-orange-100 text-orange-700",
-  },
-  delivered: {
-    label: "Delivered — Review!",
-    color: "bg-purple-100 text-purple-700",
-  },
-  completed: { label: "Completed", color: "bg-green-100 text-green-700" },
-  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700" },
-  disputed: { label: "Disputed", color: "bg-red-100 text-red-700" },
-};
+  {},
+);
 
 export default function ClientMyOrders() {
   const { user } = useCurrentUser();
@@ -51,16 +43,97 @@ export default function ClientMyOrders() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    if (!user) return;
-    base44.entities.Order.filter(
-      { client_id: user.id },
-      "-created_date",
-      50,
-    ).then((o) => {
-      setOrders(o);
-      setLoading(false);
-    });
-  }, [user]);
+    // Simulate loading orders with dummy data
+    const dummyOrders = [
+      {
+        id: "order-1",
+        gig_id: "gig-001",
+        gig_title: "Professional Logo Design",
+        client_id: "client-001",
+        student_id: "student-001",
+        student_name: "Maria Garcia",
+        package_name: "Standard",
+        amount: 3000,
+        delivery_days: 5,
+        status: "awaiting_payment",
+        due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 3600000).toISOString(),
+      },
+      {
+        id: "order-2",
+        gig_id: "gig-002",
+        gig_title: "Website Banner Design",
+        client_id: "client-001",
+        student_id: "student-002",
+        student_name: "John Smith",
+        package_name: "Premium",
+        amount: 5000,
+        delivery_days: 7,
+        status: "in_progress",
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 86400000).toISOString(),
+      },
+      {
+        id: "order-3",
+        gig_id: "gig-003",
+        gig_title: "Business Card Design",
+        client_id: "client-001",
+        student_id: "student-003",
+        student_name: "Sarah Lee",
+        package_name: "Basic",
+        amount: 1500,
+        delivery_days: 3,
+        status: "delivered",
+        due_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 172800000).toISOString(),
+      },
+      {
+        id: "order-4",
+        gig_id: "gig-004",
+        gig_title: "Social Media Graphics",
+        client_id: "client-001",
+        student_id: "student-001",
+        student_name: "Maria Garcia",
+        package_name: "Standard",
+        amount: 3000,
+        delivery_days: 5,
+        status: "completed",
+        due_date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 259200000).toISOString(),
+      },
+      {
+        id: "order-5",
+        gig_id: "gig-005",
+        gig_title: "Flyer Design",
+        client_id: "client-001",
+        student_id: "student-002",
+        student_name: "John Smith",
+        package_name: "Premium",
+        amount: 4500,
+        delivery_days: 4,
+        status: "revision_requested",
+        due_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 345600000).toISOString(),
+      },
+      {
+        id: "order-6",
+        gig_id: "gig-001",
+        gig_title: "Professional Logo Design",
+        client_id: "client-001",
+        student_id: "student-003",
+        student_name: "Sarah Lee",
+        package_name: "Basic",
+        amount: 1500,
+        delivery_days: 3,
+        status: "pending",
+        due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
+        created_date: new Date(Date.now() - 86400000).toISOString(),
+      },
+    ];
+
+    setOrders(dummyOrders);
+    setLoading(false);
+  }, []);
 
   const filtered = orders.filter(
     (o) => filter === "all" || o.status === filter,

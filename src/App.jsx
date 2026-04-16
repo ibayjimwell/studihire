@@ -33,7 +33,9 @@ import StudentProfile from "./pages/student/Profile";
 import Checkout from "./pages/Checkout";
 import OrderWorkspace from "./pages/OrderWorkspace";
 import StudentMyOrders from "./pages/student/MyOrders";
+import StudentOrderWorkspace from "./pages/student/StudentOrderWorkspace";
 import ClientMyOrders from "./pages/client/MyOrders";
+import ClientApplicants from "./pages/client/Applicants";
 
 const AuthenticatedApp = () => {
   const { user, loading } = useAuth();
@@ -67,13 +69,15 @@ const AuthenticatedApp = () => {
       <Route path="/student/profile" element={<StudentProfile />} />
       <Route path="/student/gigs/new" element={<GigCreate />} />
       <Route path="/student/payments" element={<Payments role="student" />} />
-      <Route path="/student/orders" element={<StudentMyOrders />} />
+      <Route path="/student/my-orders" element={<StudentMyOrders />} />
+      <Route path="/student/orders/:id" element={<StudentOrderWorkspace />} />
 
       {/* Client */}
       <Route path="/client/dashboard" element={<ClientDashboard />} />
       <Route path="/client/projects/new" element={<ProjectCreate />} />
       <Route path="/client/payments" element={<Payments role="client" />} />
       <Route path="/client/orders" element={<ClientMyOrders />} />
+      <Route path="/client/applicants" element={<ClientApplicants />} />
 
       {/* Shared */}
       <Route path="/messages" element={<Messages />} />

@@ -100,22 +100,32 @@ export default function Navbar() {
                     {user.role === "student" && (
                       <DropdownMenuItem asChild>
                         <Link
-                          to="/student/dashboard"
+                          to="/student/my-orders"
                           className="flex items-center gap-2"
                         >
-                          <GraduationCap className="w-4 h-4" /> My Dashboard
+                          <Briefcase className="w-4 h-4" /> My Orders
                         </Link>
                       </DropdownMenuItem>
                     )}
                     {user.role === "client" && (
-                      <DropdownMenuItem asChild>
-                        <Link
-                          to="/client/dashboard"
-                          className="flex items-center gap-2"
-                        >
-                          <Briefcase className="w-4 h-4" /> My Dashboard
-                        </Link>
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            to="/client/orders"
+                            className="flex items-center gap-2"
+                          >
+                            <Briefcase className="w-4 h-4" /> My Orders
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link
+                            to="/client/applicants"
+                            className="flex items-center gap-2"
+                          >
+                            <GraduationCap className="w-4 h-4" /> My Applicants
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
                     )}
                     <DropdownMenuItem asChild>
                       <Link to="/messages">Messages</Link>
