@@ -1,6 +1,8 @@
+// @ts-nocheck
 import React, { createContext, useContext, useState, useEffect } from "react";
 import { authOnAuthStateChange, authLogout } from "@/utils/authUtils";
 
+// Create a context for authentication state
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
@@ -21,6 +23,9 @@ export function AuthProvider({ children }) {
           avatar_url: authUser.user_metadata?.avatar_url || null,
           onboarding_completed:
             authUser.user_metadata?.onboarding_completed || false,
+          verification_status:
+            // verification_status is stored in user metadata; default to "draft" if not set
+            authUser.user_metadata?.verification_status || "draft",
           profile_verified: authUser.user_metadata?.profile_verified || false,
         });
       } else {

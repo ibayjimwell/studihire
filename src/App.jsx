@@ -75,11 +75,11 @@ const AuthenticatedApp = () => {
       {/* Auth Routes - Public */}
       <Route
         path="/auth/login"
-        element={user ? <Navigate to="/" /> : <Login />}
+        element={user.id ? <Navigate to="/" /> : <Login />}
       />
       <Route
         path="/auth/signup"
-        element={user ? <Navigate to="/" /> : <Signup />}
+        element={user.id ? <Navigate to="/" /> : <Signup />}
       />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       <Route path="/auth/reset-password" element={<ResetPassword />} />

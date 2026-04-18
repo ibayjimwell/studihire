@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -17,6 +18,9 @@ import {
   GraduationCap,
   ShieldCheck,
   LogOut,
+  Clock,
+  AlertCircle,
+  MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import NotificationsPopover from "@/components/shared/NotificationsPopover";
@@ -30,7 +34,7 @@ export default function Navbar() {
   const navLinks = [
     { label: "Browse Gigs", href: "/gigs" },
     { label: "Find Projects", href: "/projects" },
-    { label: "How It Works", href: "/how-it-works" },
+    { label: "How It Works", href: "/#how-it-works" },
   ];
 
   const isActive = (href) => location.pathname === href;
@@ -73,7 +77,7 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {user ? (
+            {user.id ? (
               <>
                 <NotificationsPopover />
 
@@ -102,6 +106,38 @@ export default function Navbar() {
                         {user.email}
                       </p>
                     </div>
+
+                    {/* Verification Status Indicator for Students */}
+                    {user.verification_status === "submitted" && (
+                      <div className="px-2 py-2 border-b border-border bg-yellow-50">
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-yellow-600" />
+                          <div>
+                            <p className="text-xs font-semibold text-yellow-800">
+                              Verification Pending
+                            </p>
+                            <p className="text-xs text-yellow-700 mt-0.5">
+                              Your profile is under review
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {user.role === "student" && user.verification_status === "approved" && (
+                      <div className="px-2 py-2 border-b border-border bg-green-50">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="w-4 h-4 text-green-600" />
+                          <div>
+                            <p className="text-xs font-semibold text-green-800">
+                              Verified Student
+                            </p>
+                            <p className="text-xs text-green-700 mt-0.5">
+                              Your profile is verified
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Role-specific items */}
                     {user.role === "admin" && (
@@ -150,7 +186,12 @@ export default function Navbar() {
                       </>
                     )}
                     <DropdownMenuItem asChild>
-                      <Link to="/messages">Messages</Link>
+                      <Link
+                        className="flex items-center gap-2"
+                        to="/messages"
+                      >
+                        <MessageCircle className="w-4 h-4" /> Messages
+                      </Link>
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem

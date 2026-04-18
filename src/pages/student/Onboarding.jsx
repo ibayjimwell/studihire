@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Navigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +34,7 @@ import {
   submitStudentVerification,
   updateStudentProfile,
 } from "@/utils/verificationDbUtils";
+import { authUpdateProfile } from "@/utils/authUtils";
 import {
   uploadResume,
   uploadStudentID,
@@ -76,13 +77,34 @@ const STEPS = [
 
 export default function StudentOnboarding() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, updateUserMetadata } = useAuth();
+
+  // Immediate guard: if the user has already completed onboarding or verification,
+  // prevent rendering the onboarding page and redirect to home.
+  if (user && (user.onboarding_completed || (user.verification_status && user.verification_status !== "draft"))) {
+    return <Navigate to="/" replace />;
+  }
 
   // Navigation
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  // Redirect if user has already completed onboarding or submitted verification
+  useEffect(() => {
+    if (!user) return;
+    // If the onboarding_completed flag is set (we set it after successful submission),
+    // redirect the user away from the onboarding page.
+    if (user.onboarding_completed) {
+      navigate("/");
+      return;
+    }
+    // Fallback: if verification_status exists and is not "draft", also redirect.
+    if (user.verification_status && user.verification_status !== "draft") {
+      navigate("/");
+    }
+  }, [user, navigate]);
 
   // Submission state
   const [submissionId, setSubmissionId] = useState(null);
@@ -144,13 +166,49 @@ export default function StudentOnboarding() {
           return;
         }
 
+        // If a submission exists and is not in draft status, the user has already submitted
+        // their verification. Redirect them away from the onboarding page.
+        if (submission && submission.submission_status && submission.submission_status !== "draft") {
+          // Redirect to home (or dashboard) since onboarding is only for new users
+          navigate("/");
+          return;
+        }
+
         if (submission && submission.submission_status === "draft") {
           // Load existing draft
           setSubmissionId(submission.id);
+          
+          // Transform skills from database format (array) to form format (object with categories)
+          let transformedSkills = {
+            technical: [],
+            soft: [],
+            languages: [],
+            tools: [],
+          };
+          if (submission.skills && Array.isArray(submission.skills)) {
+            // Database stores skills as a flat array, convert to categorized object
+            transformedSkills.technical = submission.skills;
+          } else if (submission.skills && typeof submission.skills === 'object' && !Array.isArray(submission.skills)) {
+            transformedSkills = submission.skills;
+          }
+          
+          // Transform experience from database format (text) to form format (array)
+          let transformedExperience = [];
+          if (submission.experience && typeof submission.experience === 'string' && submission.experience.trim()) {
+            transformedExperience = submission.experience.split('\n\n').map(desc => ({
+              description: desc.trim(),
+              start_date: null,
+              end_date: null,
+            }));
+          } else if (Array.isArray(submission.experience)) {
+            transformedExperience = submission.experience;
+          }
+          
           setFormData((prev) => ({
             ...prev,
             ...submission,
-            skills: submission.skills || prev.skills,
+            skills: transformedSkills,
+            experience: transformedExperience,
           }));
 
           // Determine which step to go to
@@ -244,10 +302,16 @@ export default function StudentOnboarding() {
 
       // 2. Extract text from resume
       setAIParsing(true);
-      const { text: resumeText, error: extractError } =
-        await extractResumeFile(file);
+      let resumeText;
+      let extractError;
+      
+      try {
+        resumeText = await extractResumeText(file);
+      } catch (error) {
+        extractError = error;
+      }
 
-      if (extractError && !resumeText) {
+      if (extractError || !resumeText) {
         setError(
           "Failed to extract resume text. Please try again or upload manually.",
         );
@@ -264,9 +328,12 @@ export default function StudentOnboarding() {
       } = await parseResumeWithDeepSeek(resumeText);
 
       if (parseError) {
-        setError(
-          "AI parsing failed. Your resume has been uploaded. You can fill in the form manually.",
-        );
+        // Show specific error message for insufficient balance
+        let errorMessage = "AI parsing failed. Your resume has been uploaded. You can fill in the form manually.";
+        if (parseError.code === "insufficient_balance") {
+          errorMessage = parseError.message + " You can still fill in the form manually.";
+        }
+        setError(errorMessage);
         setAIParsing(false);
         setResumeUploading(false);
         setFormData((prev) => ({
@@ -451,7 +518,25 @@ export default function StudentOnboarding() {
     setError("");
 
     try {
-      // Update submission with final data
+      // Transform data to match database schema
+      const transformedSkills = [];
+      if (formData.skills) {
+        // Flatten all skill categories into a single array
+        Object.values(formData.skills).forEach(categorySkills => {
+          if (Array.isArray(categorySkills)) {
+            transformedSkills.push(...categorySkills);
+          }
+        });
+      }
+
+      // Transform experience array to text (join descriptions)
+      const transformedExperience = formData.experience && formData.experience.length > 0 
+        ? formData.experience.map(exp => exp.description).join("\n\n")
+        : "";
+
+      // Update submission with final data AND submit for verification in one call
+      // This is necessary because RLS only allows updating draft submissions
+      // Combining both operations ensures the status change happens while still in draft state
       const { error: updateError } = await updateStudentSubmission(
         submissionId,
         {
@@ -464,53 +549,60 @@ export default function StudentOnboarding() {
           institution: formData.institution,
           graduation_year: formData.graduation_year,
           field_of_study: formData.field_of_study,
-          skills: formData.skills,
-          experience: formData.experience,
+          skills: transformedSkills, // Convert object to array
+          experience: transformedExperience, // Convert array to text
           years_of_experience: formData.years_of_experience,
           student_id_url: formData.student_id_url,
           resume_url: formData.resume_url,
+          submission_status: "submitted", // Change status to submitted
+          submitted_at: new Date().toISOString(), // Set submission timestamp
         },
       );
 
       if (updateError) {
         // Allow submission to proceed even if database isn't initialized (PGRST116 = table not found)
         if (updateError.code !== "PGRST116") {
-          setError("Failed to save your information");
+          setError("Failed to save your information: " + (updateError.message || "Unknown error"));
           setSubmitting(false);
           return;
         }
         console.warn("Database not initialized. Data won't be persisted.");
       }
 
-      // Submit for verification
-      const { error: submitError } =
-        await submitStudentVerification(submissionId);
-
-      if (submitError) {
-        // Allow submission to proceed even if database isn't initialized
-        if (submitError.code !== "PGRST116") {
-          setError("Failed to submit for verification");
-          setSubmitting(false);
-          return;
+      // Update user profile (silently fail if profile doesn't exist)
+      try {
+        await updateStudentProfile(user.id, {
+          full_name: formData.full_name,
+          email: formData.email,
+          phone_number: formData.phone_number,
+          location: formData.location,
+          bio: formData.bio,
+          verification_status: "submitted",
+          onboarding_completed: true,
+        });
+        // Persist verification status and onboarding flag to auth metadata
+        try {
+          await authUpdateProfile({
+            verification_status: "submitted",
+            onboarding_completed: true,
+          });
+        } catch (e) {
+          console.warn("Failed to update auth metadata", e);
         }
-        console.warn(
-          "Database not initialized. Submission will proceed locally.",
-        );
+        // Also update the local context flags so ProtectedRoute knows onboarding is done
+        if (updateUserMetadata) {
+          updateUserMetadata({
+            onboarding_completed: true,
+            verification_status: "submitted",
+          });
+        }
+      } catch (profileError) {
+        console.warn("Profile update failed (might not exist yet):", profileError);
+        // Continue anyway - the submission was successful
       }
 
-      // Update user profile
-      await updateStudentProfile(user.id, {
-        full_name: formData.full_name,
-        email: formData.email,
-        phone_number: formData.phone_number,
-        location: formData.location,
-        bio: formData.bio,
-        verification_status: "submitted",
-        onboarding_completed: true,
-      });
-
-      // Navigate to dashboard
-      navigate("/student/dashboard");
+      // Navigate to home page with success message
+      navigate("/", { state: { submissionSuccess: true } });
     } catch (err) {
       setError(err.message || "An error occurred while submitting");
     } finally {
@@ -535,14 +627,12 @@ export default function StudentOnboarding() {
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
-            <GraduationCap className="w-8 h-8 text-primary" />
             <h1 className="text-3xl font-bold text-foreground">
               Complete Your Profile
             </h1>
           </div>
           <p className="text-muted-foreground">
-            Create your verification submission. Submit your resume and ID for
-            admin review.
+            Submit your resume and ID for verification.
           </p>
         </div>
 
@@ -681,7 +771,7 @@ function ResumeUploadStep({
           Upload Your Resume
         </h3>
         <p className="text-sm text-muted-foreground mb-4">
-          Upload your resume (PDF, DOC, or TXT). Our AI will analyze it and
+          Upload your resume in PDF format. Our system will analyze it and
           pre-fill your information.
         </p>
       </div>
@@ -691,7 +781,7 @@ function ResumeUploadStep({
           type="file"
           onChange={handleResumeUpload}
           disabled={resumeUploading || aiParsing}
-          accept=".pdf,.doc,.docx,.txt"
+          accept=".pdf"
           className="hidden"
           id="resume-upload"
         />
@@ -701,7 +791,7 @@ function ResumeUploadStep({
               <Loader2 className="w-8 h-8 text-primary mx-auto animate-spin" />
               <p className="text-sm font-medium text-foreground">
                 {aiParsing
-                  ? "AI is analyzing your resume..."
+                  ? "Analyzing your resume..."
                   : "Uploading resume..."}
               </p>
             </div>
@@ -712,7 +802,7 @@ function ResumeUploadStep({
                 Click to upload or drag and drop
               </p>
               <p className="text-xs text-muted-foreground">
-                PDF, DOC, DOCX, or TXT (max 10MB)
+                PDF (max 5MB)
               </p>
             </div>
           )}
@@ -896,7 +986,7 @@ function SkillsExperienceStep({
   onNext,
   onPrev,
 }) {
-  const skillCategories = ["technical", "soft", "languages", "tools"];
+  const skillCategories = ["What you can do"];
 
   return (
     <div className="space-y-6">
@@ -908,16 +998,15 @@ function SkillsExperienceStep({
 
       {/* Skills */}
       <div>
-        <h4 className="font-medium text-foreground mb-3">Add Your Skills</h4>
         <div className="space-y-3">
           {skillCategories.map((category) => (
             <div key={category}>
               <label className="text-sm font-medium text-foreground capitalize mb-1 block">
-                {category} Skills
+                {category}
               </label>
               <div className="flex gap-2">
                 <Input
-                  placeholder={`Add ${category} skill and press Enter`}
+                  placeholder={`Add your skills and press Enter eg: JavaScript, Communication, Photoshop...`}
                   value={skillInput}
                   onChange={(e) => setSkillInput(e.target.value)}
                   onKeyPress={(e) => {
@@ -1168,9 +1257,9 @@ function ReviewStep({ formData, submitting, handleSubmit, onPrev }) {
           <CardTitle className="text-sm">Skills</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 text-sm">
-          {Object.entries(formData.skills).map(
+          {formData.skills && typeof formData.skills === 'object' && Object.entries(formData.skills).map(
             ([category, skills]) =>
-              skills.length > 0 && (
+              Array.isArray(skills) && skills.length > 0 && (
                 <div key={category}>
                   <span className="text-muted-foreground capitalize">
                     {category}:

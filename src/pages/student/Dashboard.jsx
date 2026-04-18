@@ -26,11 +26,9 @@ import {
 const sidebarLinks = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/gigs", label: "My Gigs", icon: Briefcase },
-  { href: "/student/applications", label: "Applications", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/student/payments", label: "Earnings", icon: DollarSign },
   { href: "/student/profile", label: "My Profile", icon: GraduationCap },
-  { href: "/student/settings", label: "Settings", icon: Settings },
 ];
 
 export default function StudentDashboard() {
@@ -105,7 +103,7 @@ export default function StudentDashboard() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-foreground">
-            Welcome back, {profile?.full_name?.split(" ")[0] || "Student"} 👋
+            Welcome, {profile?.full_name?.split(" ")[0] || "Student"}
           </h1>
           <div className="flex items-center gap-2 mt-1">
             <VerificationBadge

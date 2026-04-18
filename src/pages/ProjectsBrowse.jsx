@@ -68,12 +68,12 @@ export default function ProjectsBrowse() {
             </div>
             <Select value={budgetType} onValueChange={setBudgetType}>
               <SelectTrigger className="w-full sm:w-36 bg-white text-sm">
-                <SelectValue placeholder="Budget type" />
+                <SelectValue placeholder="All Types" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={null}>All Types</SelectItem>
-                <SelectItem value="fixed">Fixed Price</SelectItem>
-                <SelectItem value="hourly">Hourly</SelectItem>
+                <SelectItem value="all">All Types</SelectItem>
+                <SelectItem value="remote">Remote</SelectItem>
+                <SelectItem value="onsite">Onsite</SelectItem>
               </SelectContent>
             </Select>
           </div>

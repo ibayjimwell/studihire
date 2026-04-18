@@ -479,21 +479,49 @@ export const updateStudentProfile = async (userId, updates) => {
       };
     }
 
-    const { data, error } = await supabase
+    // First, check if profile exists
+    const { data: existingProfile } = await supabase
       .from("student_profiles")
-      .update({
-        ...updates,
-        updated_at: new Date().toISOString(),
-      })
+      .select("user_id")
       .eq("user_id", userId)
-      .select()
-      .single();
+      .maybeSingle();
 
-    if (error) {
-      return { data: null, error };
+    if (existingProfile) {
+      // Update existing profile
+      const { data, error } = await supabase
+        .from("student_profiles")
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", userId)
+        .select()
+        .single();
+
+      if (error) {
+        return { data: null, error };
+      }
+
+      return { data, error: null };
+    } else {
+      // Insert new profile
+      const { data, error } = await supabase
+        .from("student_profiles")
+        .insert({
+          user_id: userId,
+          ...updates,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+
+      if (error) {
+        return { data: null, error };
+      }
+
+      return { data, error: null };
     }
-
-    return { data, error: null };
   } catch (error) {
     return {
       data: null,

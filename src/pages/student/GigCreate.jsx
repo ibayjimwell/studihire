@@ -34,7 +34,6 @@ import {
 const sidebarLinks = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/gigs", label: "My Gigs", icon: Briefcase },
-  { href: "/student/applications", label: "Applications", icon: FileText },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/student/payments", label: "Earnings", icon: DollarSign },
   { href: "/student/profile", label: "My Profile", icon: GraduationCap },

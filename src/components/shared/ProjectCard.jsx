@@ -38,7 +38,7 @@ export default function ProjectCard({ project }) {
               ₱{project.budget_min?.toLocaleString()}
               {project.budget_max && project.budget_max !== project.budget_min && `–${project.budget_max?.toLocaleString()}`}
             </p>
-            <p className="text-xs text-muted-foreground">{project.budget_type}</p>
+            <p className="text-xs text-muted-foreground">{project.type}</p>
           </div>
         </div>
 

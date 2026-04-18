@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import Navbar from '@/components/layout/Navbar';
-import { GraduationCap, Search, Star, Shield, Zap, Users, ArrowRight, CheckCircle, Briefcase } from 'lucide-react';
+import { GraduationCap, Search, Star, Shield, Zap, Users, ArrowRight, CheckCircle, Briefcase, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useEffect, useState } from 'react';
 
 const CATEGORIES = [
   { name: 'Web Development', icon: '💻', count: '120+ gigs' },
@@ -13,7 +14,7 @@ const CATEGORIES = [
   { name: 'Video Editing', icon: '🎬', count: '38+ gigs' },
   { name: 'UI/UX Design', icon: '🖥️', count: '52+ gigs' },
   { name: 'Data Analysis', icon: '📊', count: '30+ gigs' },
-  { name: 'Academic Tutoring', icon: '📚', count: '70+ gigs' },
+  { name: 'Others', icon: '📚', count: '70+ gigs' },
 ];
 
 const STEPS = [
@@ -31,9 +32,52 @@ const STATS = [
 ];
 
 export default function Home() {
+  const location = useLocation();
+  const [showSuccess, setShowSuccess] = useState(false);
+
+  useEffect(() => {
+    if (location.state?.submissionSuccess) {
+      setShowSuccess(true);
+      // Clear the state after showing the message
+      setTimeout(() => {
+        setShowSuccess(false);
+      }, 8000);
+    }
+  }, [location]);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
+
+      {/* Success Message */}
+      {showSuccess && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="bg-green-50 border-b border-green-200 py-3 px-4"
+        >
+          <div className="max-w-5xl mx-auto flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle className="w-5 h-5 text-green-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-green-900">
+                Verification submitted successfully! Your profile is now under review.
+              </p>
+              <p className="text-xs text-green-700 mt-1">
+                You'll receive an email once your verification is complete. This usually takes 1-2 business days.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSuccess(false)}
+              className="text-green-600 hover:text-green-800"
+            >
+              <AlertCircle className="w-5 h-5" />
+            </button>
+          </div>
+        </motion.div>
+      )}
 
       {/* Hero */}
       <section className="gradient-hero text-white py-20 md:py-32 px-4 overflow-hidden relative">
@@ -112,6 +156,7 @@ export default function Home() {
         </div>
       </section>
 
+      <div id="how-it-works"></div>
       {/* How it works */}
       <section className="py-16 px-4 bg-white">
         <div className="max-w-5xl mx-auto">

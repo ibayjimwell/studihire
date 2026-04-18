@@ -241,7 +241,7 @@ export const generateMockData = () => {
       skills_needed: skillCategories[i % skillCategories.length],
       budget_min: 5000 + i * 1000,
       budget_max: 20000 + i * 2000,
-      budget_type: i % 2 === 0 ? "fixed" : "hourly",
+      type: "Remote",
       status: i % 3 === 0 ? "closed" : i % 2 === 0 ? "in_progress" : "open",
       created_date: new Date(2024, i % 4, (i % 28) + 1).toISOString(),
     };

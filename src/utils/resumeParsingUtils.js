@@ -104,11 +104,12 @@ Return the extracted data as JSON only.`;
 };
 
 /**
- * Configuration for DeepSeek API
+ * Configuration for OpenRouter API (using gpt-oss-120b model)
+ * OpenRouter provides access to various AI models including free ones
  */
-export const DEEPSEEK_CONFIG = {
-  API_URL: "https://api.deepseek.com/v1/chat/completions",
-  MODEL: "deepseek-chat",
+export const AI_CONFIG = {
+  API_URL: "https://openrouter.ai/api/v1/chat/completions",
+  MODEL: "meta-llama/llama-3.1-70b-instruct", // Free model on OpenRouter
   TEMPERATURE: 0.3, // Lower temperature for more deterministic output
   MAX_TOKENS: 4000,
   TOP_P: 0.95,
@@ -121,14 +122,29 @@ export const DEEPSEEK_CONFIG = {
  */
 export const extractResumeText = async (file) => {
   try {
-    // For PDF files, we would normally use a library like pdfjs-dist
-    // For now, we'll read as text or handle as needed
-
+    // For PDF files, use pdfjs-dist library
     if (file.type === "application/pdf") {
-      // This would require pdf.js library
-      // For MVP, convert to text or use OCR
-      console.warn("PDF parsing requires pdf.js library");
-      return "";
+      const pdfjsLib = await import("pdfjs-dist");
+      
+      // Set up the worker
+      pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+      
+      // Read the file as ArrayBuffer
+      const arrayBuffer = await file.arrayBuffer();
+      
+      // Load the PDF document
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      
+      // Extract text from all pages
+      let fullText = "";
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map(item => item.str).join(" ");
+        fullText += pageText + "\n";
+      }
+      
+      return fullText.trim();
     }
 
     // For text files
@@ -137,7 +153,7 @@ export const extractResumeText = async (file) => {
       return text;
     }
 
-    // For Word documents, similar approach
+    // For Word documents and other file types, attempt text extraction
     console.warn(
       `File type ${file.type} not fully supported. Attempting text extraction...`,
     );
@@ -145,12 +161,12 @@ export const extractResumeText = async (file) => {
     return text;
   } catch (error) {
     console.error("Error extracting resume text:", error);
-    throw new Error("Failed to extract text from resume");
+    throw new Error("Failed to extract text from resume: " + error.message);
   }
 };
 
 /**
- * Call DeepSeek API to parse resume
+ * Parse resume using OpenRouter API (free models)
  * @param {string} resumeText - Resume text content
  * @returns {Promise<{parsed_data, confidence, error}>}
  */
@@ -164,48 +180,78 @@ export const parseResumeWithDeepSeek = async (resumeText) => {
       };
     }
 
-    const apiKey = import.meta.env.VITE_DEEPSEEK_API_KEY;
+    const apiKey = import.meta.env.VITE_AI_API_KEY;
+    
     if (!apiKey) {
       return {
         parsed_data: null,
         confidence: 0,
-        error: { message: "DeepSeek API key not configured" },
+        error: { message: "AI API key not configured. Please add VITE_AI_API_KEY to your .env file." },
       };
     }
 
-    const response = await fetch(DEEPSEEK_CONFIG.API_URL, {
+    const requestBody = {
+      model: AI_CONFIG.MODEL,
+      temperature: AI_CONFIG.TEMPERATURE,
+      max_tokens: AI_CONFIG.MAX_TOKENS,
+      top_p: AI_CONFIG.TOP_P,
+      messages: [
+        {
+          role: "system",
+          content: RESUME_ANALYSIS_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: RESUME_ANALYSIS_USER_PROMPT_TEMPLATE(resumeText),
+        },
+      ],
+    };
+
+    const response = await fetch(AI_CONFIG.API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        "HTTP-Referer": "http://localhost:5173", // Required by OpenRouter
+        "X-Title": "StudiHire", // Required by OpenRouter
       },
-      body: JSON.stringify({
-        model: DEEPSEEK_CONFIG.MODEL,
-        temperature: DEEPSEEK_CONFIG.TEMPERATURE,
-        max_tokens: DEEPSEEK_CONFIG.MAX_TOKENS,
-        top_p: DEEPSEEK_CONFIG.TOP_P,
-        messages: [
-          {
-            role: "system",
-            content: RESUME_ANALYSIS_SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: RESUME_ANALYSIS_USER_PROMPT_TEMPLATE(resumeText),
-          },
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      return {
-        parsed_data: null,
-        confidence: 0,
-        error: {
-          message: error.error?.message || "DeepSeek API error",
-        },
-      };
+      const errorText = await response.text();
+      try {
+        const error = JSON.parse(errorText);
+        const errorMessage = error.error?.message || `AI API error: ${response.status}`;
+        
+        // Provide more helpful error messages for common issues
+        if (response.status === 402) {
+          return {
+            parsed_data: null,
+            confidence: 0,
+            error: {
+              message: "AI API: Insufficient balance. Please check your OpenRouter account.",
+              code: "insufficient_balance"
+            },
+          };
+        }
+        
+        return {
+          parsed_data: null,
+          confidence: 0,
+          error: {
+            message: errorMessage,
+          },
+        };
+      } catch {
+        return {
+          parsed_data: null,
+          confidence: 0,
+          error: {
+            message: `AI API error: ${response.status} - ${errorText.substring(0, 200)}`,
+          },
+        };
+      }
     }
 
     const data = await response.json();
@@ -215,7 +261,7 @@ export const parseResumeWithDeepSeek = async (resumeText) => {
       return {
         parsed_data: null,
         confidence: 0,
-        error: { message: "No response from DeepSeek" },
+        error: { message: "No response from AI" },
       };
     }
 
@@ -252,7 +298,7 @@ export const parseResumeWithDeepSeek = async (resumeText) => {
       parsed_data: null,
       confidence: 0,
       error: {
-        message: error.message || "Error parsing resume with DeepSeek",
+        message: error.message || "Error parsing resume with AI",
       },
     };
   }
