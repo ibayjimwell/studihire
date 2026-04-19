@@ -18,15 +18,14 @@ export function AuthProvider({ children }) {
         setUser({
           id: authUser.id,
           email: authUser.email,
-          full_name: authUser.user_metadata?.full_name || "",
-          role: authUser.user_metadata?.role || "student",
+          full_name: authUser.full_name || "",
+          role: authUser.role || "admin",
           avatar_url: authUser.user_metadata?.avatar_url || null,
           onboarding_completed:
-            authUser.user_metadata?.onboarding_completed || false,
+            authUser.onboarding_completed || false,
           verification_status:
-            // verification_status is stored in user metadata; default to "draft" if not set
-            authUser.user_metadata?.verification_status || "draft",
-          profile_verified: authUser.user_metadata?.profile_verified || false,
+            authUser.verification_status || "draft",
+          profile_verified: authUser.profile_verified || false,
         });
       } else {
         // User is signed out
