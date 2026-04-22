@@ -41,7 +41,7 @@ import {
   validateFileUpload,
 } from "@/utils/fileUploadUtils";
 import {
-  parseResumeWithDeepSeek,
+  parseResume,
   mapParsedResumeToFormData,
   extractResumeText,
 } from "@/utils/resumeParsingUtils";
@@ -320,12 +320,12 @@ export default function StudentOnboarding() {
         return;
       }
 
-      // 3. Parse with DeepSeek AI
+      // 3. Parse with LLM
       const {
         parsed_data,
         confidence,
         error: parseError,
-      } = await parseResumeWithDeepSeek(resumeText);
+      } = await parseResume(resumeText);
 
       if (parseError) {
         // Show specific error message for insufficient balance

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +14,10 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { base44 } from "@/api/mockBase44Client";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { CATEGORIES } from "@/lib/roles";
+import { gigCreate, gigUploadCoverImage } from "@/api/gigApi";
+import { useToast } from "@/components/ui/use-toast";
 import {
   Plus,
   X,
@@ -27,66 +28,128 @@ import {
   MessageSquare,
   DollarSign,
   GraduationCap,
-  FileText,
-  Settings,
 } from "lucide-react";
 
 const sidebarLinks = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/student/gigs", label: "My Gigs", icon: Briefcase },
-  { href: "/messages", label: "Messages", icon: MessageSquare },
-  { href: "/student/payments", label: "Earnings", icon: DollarSign },
-  { href: "/student/profile", label: "My Profile", icon: GraduationCap },
+  { href: "/student/gigs",      label: "My Gigs",   icon: Briefcase },
+  { href: "/messages",          label: "Messages",  icon: MessageSquare },
+  { href: "/student/payments",  label: "Earnings",  icon: DollarSign },
+  { href: "/student/profile",   label: "My Profile",icon: GraduationCap },
 ];
 
+const DEFAULT_PACKAGE = {
+  name: "Basic",
+  description: "",
+  price: 0,
+  delivery_days: 3,
+  revisions: 1,
+  features: [],
+};
+
 export default function GigCreate() {
-  const { user } = useCurrentUser();
-  const navigate = useNavigate();
-  const [loading, setLoading] = useState(false);
-  const [skillInput, setSkillInput] = useState("");
-  const [tagInput, setTagInput] = useState("");
+  const { user }   = useCurrentUser();
+  const navigate   = useNavigate();
+  const { toast }  = useToast();
+
+  const [loading,        setLoading]        = useState(false);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [skillInput,     setSkillInput]     = useState("");
 
   const [gig, setGig] = useState({
-    title: "",
-    description: "",
-    category: "",
-    subcategory: "",
+    title:           "",
+    description:     "",
+    category:        "",
+    subcategory:     "",
     skills_required: [],
-    tags: [],
-    packages: [
-      {
-        name: "Basic",
-        description: "",
-        price: 0,
-        delivery_days: 3,
-        revisions: 1,
-        features: [],
-      },
-    ],
+    tags:            [],
+    packages:        [{ ...DEFAULT_PACKAGE }],
     cover_image_url: "",
-    status: "active",
+    status:          "active",
   });
 
+  // ── State helpers ───────────────────────────────────────────────────────
   const set = (k, v) => setGig((g) => ({ ...g, [k]: v }));
+
   const setPackage = (i, k, v) => {
     const pkgs = [...gig.packages];
     pkgs[i] = { ...pkgs[i], [k]: v };
     set("packages", pkgs);
   };
 
+  const addSkill = () => {
+    const trimmed = skillInput.trim();
+    if (!trimmed || gig.skills_required.includes(trimmed)) return;
+    set("skills_required", [...gig.skills_required, trimmed]);
+    setSkillInput("");
+  };
+
+  const removeSkill = (skill) =>
+    set("skills_required", gig.skills_required.filter((s) => s !== skill));
+
+  const addPackage = () =>
+    set("packages", [
+      ...gig.packages,
+      {
+        name:          `Package ${gig.packages.length + 1}`,
+        description:   "",
+        price:         0,
+        delivery_days: 5,
+        revisions:     2,
+        features:      [],
+      },
+    ]);
+
+  const removePackage = (i) =>
+    set("packages", gig.packages.filter((_, j) => j !== i));
+
+  // ── Image upload ────────────────────────────────────────────────────────
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user?.id) return;
+
+    setImageUploading(true);
+    const { url, error } = await gigUploadCoverImage(file, user.id);
+
+    if (error) {
+      toast({
+        title:       "Image upload failed",
+        description: error.message,
+        variant:     "destructive",
+      });
+    } else {
+      set("cover_image_url", url);
+    }
+    setImageUploading(false);
+  };
+
+  // ── Submit ──────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
     setLoading(true);
-    await base44.entities.Gig.create({ ...gig, student_id: user?.id });
+
+    const { gig: created, error } = await gigCreate(gig);
+
+    if (error) {
+      toast({
+        title:       "Failed to publish gig",
+        description: error.message,
+        variant:     "destructive",
+      });
+      setLoading(false);
+      return;
+    }
+
+    toast({
+      title:       "Gig published! 🎉",
+      description: `"${created.title}" is now live on the marketplace.`,
+    });
     navigate("/student/gigs");
   };
 
-  const handleImageUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const { file_url } = await base44.integrations.Core.UploadFile({ file });
-    set("cover_image_url", file_url);
-  };
+  const isSubmitDisabled =
+    loading || imageUploading || !gig.title.trim() || !gig.category;
 
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <DashboardLayout sidebarLinks={sidebarLinks} sidebarTitle="Student">
       <div className="max-w-3xl">
@@ -98,12 +161,13 @@ export default function GigCreate() {
         </div>
 
         <div className="space-y-6">
-          {/* Basic Info */}
+          {/* ── Gig Details ── */}
           <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base">Gig Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              {/* Title */}
               <div>
                 <Label>Gig Title *</Label>
                 <Input
@@ -113,6 +177,8 @@ export default function GigCreate() {
                   placeholder="I will design a professional logo for your brand"
                 />
               </div>
+
+              {/* Category + Subcategory */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <Label>Category *</Label>
@@ -142,6 +208,8 @@ export default function GigCreate() {
                   />
                 </div>
               </div>
+
+              {/* Description */}
               <div>
                 <Label>Description *</Label>
                 <Textarea
@@ -152,6 +220,8 @@ export default function GigCreate() {
                   placeholder="Describe what you offer, your process, and what clients can expect..."
                 />
               </div>
+
+              {/* Skills */}
               <div>
                 <Label>Skills</Label>
                 <div className="flex gap-2 mt-1">
@@ -162,29 +232,11 @@ export default function GigCreate() {
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        if (skillInput.trim()) {
-                          set("skills_required", [
-                            ...gig.skills_required,
-                            skillInput.trim(),
-                          ]);
-                          setSkillInput("");
-                        }
+                        addSkill();
                       }
                     }}
                   />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      if (skillInput.trim()) {
-                        set("skills_required", [
-                          ...gig.skills_required,
-                          skillInput.trim(),
-                        ]);
-                        setSkillInput("");
-                      }
-                    }}
-                  >
+                  <Button type="button" variant="outline" onClick={addSkill}>
                     <Plus className="w-4 h-4" />
                   </Button>
                 </div>
@@ -194,15 +246,8 @@ export default function GigCreate() {
                       key={s}
                       className="bg-secondary text-secondary-foreground pr-1 gap-1"
                     >
-                      {s}{" "}
-                      <button
-                        onClick={() =>
-                          set(
-                            "skills_required",
-                            gig.skills_required.filter((x) => x !== s),
-                          )
-                        }
-                      >
+                      {s}
+                      <button onClick={() => removeSkill(s)} aria-label={`Remove ${s}`}>
                         <X className="w-3 h-3" />
                       </button>
                     </Badge>
@@ -212,27 +257,11 @@ export default function GigCreate() {
             </CardContent>
           </Card>
 
-          {/* Packages */}
+          {/* ── Packages ── */}
           <Card className="border-border">
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-base">Packages</CardTitle>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() =>
-                  set("packages", [
-                    ...gig.packages,
-                    {
-                      name: `Package ${gig.packages.length + 1}`,
-                      description: "",
-                      price: 0,
-                      delivery_days: 5,
-                      revisions: 2,
-                      features: [],
-                    },
-                  ])
-                }
-              >
+              <Button size="sm" variant="outline" onClick={addPackage}>
                 <Plus className="w-4 h-4 mr-1" /> Add Package
               </Button>
             </CardHeader>
@@ -250,13 +279,9 @@ export default function GigCreate() {
                     />
                     {gig.packages.length > 1 && (
                       <button
-                        onClick={() =>
-                          set(
-                            "packages",
-                            gig.packages.filter((_, j) => j !== i),
-                          )
-                        }
+                        onClick={() => removePackage(i)}
                         className="text-destructive hover:opacity-70"
+                        aria-label="Remove package"
                       >
                         <X className="w-4 h-4" />
                       </button>
@@ -265,9 +290,7 @@ export default function GigCreate() {
                   <Textarea
                     rows={2}
                     value={pkg.description}
-                    onChange={(e) =>
-                      setPackage(i, "description", e.target.value)
-                    }
+                    onChange={(e) => setPackage(i, "description", e.target.value)}
                     placeholder="What's included in this package?"
                   />
                   <div className="grid grid-cols-3 gap-3">
@@ -277,9 +300,7 @@ export default function GigCreate() {
                         type="number"
                         className="mt-1"
                         value={pkg.price}
-                        onChange={(e) =>
-                          setPackage(i, "price", +e.target.value)
-                        }
+                        onChange={(e) => setPackage(i, "price", +e.target.value)}
                         min={0}
                       />
                     </div>
@@ -289,9 +310,7 @@ export default function GigCreate() {
                         type="number"
                         className="mt-1"
                         value={pkg.delivery_days}
-                        onChange={(e) =>
-                          setPackage(i, "delivery_days", +e.target.value)
-                        }
+                        onChange={(e) => setPackage(i, "delivery_days", +e.target.value)}
                         min={1}
                       />
                     </div>
@@ -301,9 +320,7 @@ export default function GigCreate() {
                         type="number"
                         className="mt-1"
                         value={pkg.revisions}
-                        onChange={(e) =>
-                          setPackage(i, "revisions", +e.target.value)
-                        }
+                        onChange={(e) => setPackage(i, "revisions", +e.target.value)}
                         min={0}
                       />
                     </div>
@@ -313,7 +330,7 @@ export default function GigCreate() {
             </CardContent>
           </Card>
 
-          {/* Cover image */}
+          {/* ── Cover Image ── */}
           <Card className="border-border">
             <CardHeader>
               <CardTitle className="text-base">Cover Image</CardTitle>
@@ -323,29 +340,40 @@ export default function GigCreate() {
                 <div className="relative">
                   <img
                     src={gig.cover_image_url}
-                    alt="cover"
+                    alt="Gig cover"
                     className="w-full aspect-video object-cover rounded-xl"
                   />
                   <button
                     onClick={() => set("cover_image_url", "")}
-                    className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow"
+                    className="absolute top-2 right-2 p-1.5 bg-white rounded-full shadow hover:bg-gray-50 transition-colors"
+                    aria-label="Remove cover image"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
                 <label className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-border rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all">
-                  <Upload className="w-7 h-7 text-muted-foreground mb-2" />
-                  <span className="text-sm font-medium">
-                    Upload cover image
-                  </span>
-                  <span className="text-xs text-muted-foreground mt-1">
-                    JPG or PNG, 1280x720 recommended
-                  </span>
+                  {imageUploading ? (
+                    <>
+                      <Loader2 className="w-7 h-7 text-primary animate-spin mb-2" />
+                      <span className="text-sm font-medium text-muted-foreground">
+                        Uploading…
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-7 h-7 text-muted-foreground mb-2" />
+                      <span className="text-sm font-medium">Upload cover image</span>
+                      <span className="text-xs text-muted-foreground mt-1">
+                        JPG or PNG, 1280×720 recommended
+                      </span>
+                    </>
+                  )}
                   <input
                     type="file"
                     className="hidden"
                     accept="image/*"
+                    disabled={imageUploading}
                     onChange={handleImageUpload}
                   />
                 </label>
@@ -353,14 +381,19 @@ export default function GigCreate() {
             </CardContent>
           </Card>
 
-          <div className="flex gap-3 justify-end">
-            <Button variant="outline" onClick={() => navigate("/student/gigs")}>
+          {/* ── Actions ── */}
+          <div className="flex gap-3 justify-end pb-8">
+            <Button
+              variant="outline"
+              onClick={() => navigate("/student/gigs")}
+              disabled={loading}
+            >
               Cancel
             </Button>
             <Button
               className="gradient-primary text-white border-0 px-8"
               onClick={handleSubmit}
-              disabled={loading || !gig.title || !gig.category}
+              disabled={isSubmitDisabled}
             >
               {loading ? (
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />

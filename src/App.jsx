@@ -48,6 +48,7 @@ import StudentMyOrders from "./pages/student/MyOrders";
 import StudentOrderWorkspace from "./pages/student/StudentOrderWorkspace";
 import ClientMyOrders from "./pages/client/MyOrders";
 import ClientApplicants from "./pages/client/Applicants";
+import StudentGigs from "./pages/student/StudentGigs";
 
 const AuthenticatedApp = () => {
   const { user, loading } = useAuth();
@@ -75,11 +76,11 @@ const AuthenticatedApp = () => {
       {/* Auth Routes - Public */}
       <Route
         path="/auth/login"
-        element={user.id ? <Navigate to="/" /> : <Login />}
+        element={user?.id ? <Navigate to="/" /> : <Login />}
       />
       <Route
         path="/auth/signup"
-        element={user.id ? <Navigate to="/" /> : <Signup />}
+        element={user?.id ? <Navigate to="/" /> : <Signup />}
       />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
       <Route path="/auth/reset-password" element={<ResetPassword />} />
@@ -116,6 +117,14 @@ const AuthenticatedApp = () => {
         element={
           <ProtectedRoute requiredRole="student">
             <StudentProfile />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/student/gigs"
+        element={
+          <ProtectedRoute requiredRole="student">
+            <StudentGigs />
           </ProtectedRoute>
         }
       />

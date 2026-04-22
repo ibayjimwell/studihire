@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StudiHire Agile Board</title>
+  <style>
+    body {
+      font-family: Inter, system-ui, sans-serif;
+      background: #f5f7fb;
+      color: #121212;
+      margin: 0;
+      padding: 2rem;
+    }
+    h1 {
+      margin-bottom: 1rem;
+      font-size: 2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      background: #fff;
+      box-shadow: 0 18px 60px rgba(15, 23, 42, 0.08);
+      border-radius: 1rem;
+      overflow: hidden;
+    }
+    th,
+    td {
+      padding: 1rem;
+      vertical-align: top;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    th {
+      background: #eef2ff;
+      color: #1f2937;
+      font-weight: 700;
+      text-align: left;
+    }
+    td {
+      min-width: 200px;
+      background: #ffffff;
+    }
+    ul {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #374151;
+      line-height: 1.7;
+    }
+    li {
+      margin-bottom: 0.75rem;
+    }
+    .cell-title {
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: #111827;
+    }
+  </style>
+</head>
+<body>
+  <h1>StudiHire Agile Board</h1>
+  <table>
+    <thead>
+      <tr>
+        <th>Backlog</th>
+        <th>To Do</th>
+        <th>In Progress</th>
+        <th>Testing</th>
+        <th>Done</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>
+          <ul>
+            <li>Implement real authentication flows</li>
+            <li>Add missing public pages: /how-it-works, /privacy, /terms, /contact</li>
+            <li>Replace mock backend with real persistence</li>
+            <li>Add role-based route protection</li>
+            <li>Add automated tests and coverage</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Wire navbar links to actual auth routes</li>
+            <li>Add missing routes to src/App.jsx</li>
+            <li>Complete admin settings feature</li>
+            <li>Improve onboarding backend/data flow</li>
+            <li>Add persistent user profile storage</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Student and client dashboard workflows</li>
+            <li>Order and checkout flows in mock form</li>
+            <li>Messaging with mock conversation support</li>
+            <li>Admin pages scaffolded and mostly implemented</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Route coverage and missing route validation</li>
+            <li>Role switching via userRole query/localStorage</li>
+            <li>Checkout/order flow with mock payments</li>
+            <li>Admin actions and moderation flows</li>
+          </ul>
+        </td>
+        <td>
+          <ul>
+            <li>Landing page and public UI completed</li>
+            <li>Browse pages implemented</li>
+            <li>Gig detail page finished</li>
+            <li>Student workflow implemented</li>
+            <li>Client workflow implemented</li>
+            <li>Mock data and Base44 mock layer created</li>
+            <li>Main app routing for core features exists</li>
+          </ul>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</body>
+</html>

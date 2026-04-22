@@ -90,7 +90,7 @@ JSON STRUCTURE TO RETURN:
 Remember: Return ONLY the JSON. No explanations, no markdown, no additional text.`;
 
 /**
- * User prompt template for sending resume content to DeepSeek
+ * User prompt template for sending resume content to LLM
  */
 export const RESUME_ANALYSIS_USER_PROMPT_TEMPLATE = (resumeText) => {
   return `Please analyze this resume and extract all information into the JSON structure I provided. Return ONLY valid JSON:
@@ -104,12 +104,12 @@ Return the extracted data as JSON only.`;
 };
 
 /**
- * Configuration for OpenRouter API (using gpt-oss-120b model)
+ * Configuration for OpenRouter API (using llama-3.1-70b-instruct model)
  * OpenRouter provides access to various AI models including free ones
  */
 export const AI_CONFIG = {
   API_URL: "https://openrouter.ai/api/v1/chat/completions",
-  MODEL: "meta-llama/llama-3.1-70b-instruct", // Free model on OpenRouter
+  MODEL: "openrouter/free", // Free model on OpenRouter
   TEMPERATURE: 0.3, // Lower temperature for more deterministic output
   MAX_TOKENS: 4000,
   TOP_P: 0.95,
@@ -170,7 +170,7 @@ export const extractResumeText = async (file) => {
  * @param {string} resumeText - Resume text content
  * @returns {Promise<{parsed_data, confidence, error}>}
  */
-export const parseResumeWithDeepSeek = async (resumeText) => {
+export const parseResume = async (resumeText) => {
   try {
     if (!resumeText || resumeText.trim().length === 0) {
       return {
