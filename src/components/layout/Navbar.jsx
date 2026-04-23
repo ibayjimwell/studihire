@@ -19,7 +19,6 @@ import {
   ShieldCheck,
   LogOut,
   Clock,
-  AlertCircle,
   MessageCircle,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
@@ -77,7 +76,7 @@ export default function Navbar() {
 
           {/* Right side */}
           <div className="flex items-center gap-3">
-            {user.id ? (
+{user && user.id ? (
               <>
                 <NotificationsPopover />
 

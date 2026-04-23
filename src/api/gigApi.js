@@ -71,6 +71,170 @@ const validateGig = (gig) => {
 };
 
 // ---------------------------------------------------------------------------
+// BROWSE — public marketplace listing
+// ---------------------------------------------------------------------------
+ 
+/**
+ * Fetches active gigs for the public marketplace with full filtering support.
+ *
+ * @param {{
+ *   search?:   string,
+ *   category?: string,
+ *   sort?:     'newest' | 'rating' | 'orders',
+ *   limit?:    number,
+ *   offset?:   number,
+ * }} options
+ * @returns {Promise<{ gigs: object[], count: number, error: object|null }>}
+ */
+export const gigBrowse = async (options = {}) => {
+  try {
+    const {
+      search   = "",
+      category = "",
+      sort     = "newest",
+      limit    = 24,
+      offset   = 0,
+    } = options;
+ 
+    const SORT_MAP = {
+      newest: { column: "created_at",    ascending: false },
+      rating: { column: "rating",        ascending: false },
+      orders: { column: "total_orders",  ascending: false },
+    };
+    const { column, ascending } = SORT_MAP[sort] ?? SORT_MAP.newest;
+ 
+    let query = supabase
+      .from("gigs")
+      .select("*", { count: "exact" })
+      .eq("status", "active")
+      .order(column, { ascending })
+      .range(offset, offset + limit - 1);
+ 
+    if (category) {
+      query = query.eq("category", category);
+    }
+ 
+    if (search.trim()) {
+      // Match title OR any element inside the skills_required text array
+      query = query.or(
+        `title.ilike.%${search.trim()}%,skills_required.cs.{${search.trim()}}`
+      );
+    }
+ 
+    const { data, count, error } = await query;
+    if (error) return { gigs: [], count: 0, error };
+    return { gigs: data ?? [], count: count ?? 0, error: null };
+  } catch (err) {
+    return { gigs: [], count: 0, error: { message: err.message || "Failed to fetch gigs." } };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// BROWSE — batch-fetch student profiles by user_id list
+// ---------------------------------------------------------------------------
+ 
+/**
+ * Returns a map of { [user_id]: profile } for a list of student IDs.
+ *
+ * @param {string[]} studentIds
+ * @returns {Promise<{ profileMap: Record<string, object>, error: object|null }>}
+ */
+export const gigFetchStudentProfiles = async (studentIds) => {
+  try {
+    if (!studentIds.length) return { profileMap: {}, error: null };
+
+    const { data, error } = await supabase
+      .from("student_profiles")
+      .select("*")           
+      .in("user_id", studentIds);
+
+    if (error) return { profileMap: {}, error };
+
+    const profileMap = {};
+    (data ?? []).forEach((p) => { profileMap[p.user_id] = p; });
+    return { profileMap, error: null };
+  } catch (err) {
+    return { profileMap: {}, error: { message: err.message || "Failed to fetch profiles." } };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// DETAIL — single public gig
+// ---------------------------------------------------------------------------
+ 
+/**
+ * Fetches a single gig by id.
+ *
+ * @param {string} gigId
+ * @returns {Promise<{ gig: object|null, error: object|null }>}
+ */
+export const gigGetById = async (gigId) => {
+  try {
+    if (!gigId) return { gig: null, error: { message: "Gig ID is required." } };
+ 
+    const { data, error } = await supabase
+      .from("gigs")
+      .select("*")
+      .eq("id", gigId)
+      .single();
+ 
+    if (error) return { gig: null, error };
+    return { gig: data, error: null };
+  } catch (err) {
+    return { gig: null, error: { message: err.message || "Failed to fetch gig." } };
+  }
+};
+
+/**
+ * Fetches a single student profile by user_id.
+ *
+ * @param {string} userId
+ * @returns {Promise<{ profile: object|null, error: object|null }>}
+ */
+export const gigGetStudentProfile = async (userId) => {
+  try {
+    if (!userId) return { profile: null, error: { message: "User ID is required." } };
+ 
+    const { data, error } = await supabase
+      .from("student_profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .single();
+ 
+    if (error) return { profile: null, error };
+    return { profile: data, error: null };
+  } catch (err) {
+    return { profile: null, error: { message: err.message || "Failed to fetch profile." } };
+  }
+};
+
+/**
+ * Fetches reviews for a gig, newest first.
+ *
+ * @param {string} gigId
+ * @param {number} [limit=20]
+ * @returns {Promise<{ reviews: object[], error: object|null }>}
+ */
+export const gigGetReviews = async (gigId, limit = 20) => {
+  try {
+    if (!gigId) return { reviews: [], error: { message: "Gig ID is required." } };
+ 
+    const { data, error } = await supabase
+      .from("reviews")
+      .select("*")
+      .eq("gig_id", gigId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+ 
+    if (error) return { reviews: [], error };
+    return { reviews: data ?? [], error: null };
+  } catch (err) {
+    return { reviews: [], error: { message: err.message || "Failed to fetch reviews." } };
+  }
+};
+
+
+// ---------------------------------------------------------------------------
 // CREATE
 // ---------------------------------------------------------------------------
 
@@ -153,37 +317,6 @@ export const gigGetMyGigs = async (options = {}) => {
     return { gigs: data ?? [], error: null };
   } catch (err) {
     return { gigs: [], error: { message: err.message || "Failed to fetch gigs." } };
-  }
-};
-
-// ---------------------------------------------------------------------------
-// READ — single gig by id
-// ---------------------------------------------------------------------------
-
-/**
- * Fetches a single gig by its id.
- * The student can view their own gigs regardless of status.
- * Public viewers only see active gigs (enforced by RLS on the database).
- *
- * @param {string} gigId
- * @returns {Promise<{ gig: Gig|null, error: object|null }>}
- */
-export const gigGetById = async (gigId) => {
-  try {
-    if (!gigId) {
-      return { gig: null, error: { message: "Gig ID is required." } };
-    }
-
-    const { data, error } = await supabase
-      .from("gigs")
-      .select("*")
-      .eq("id", gigId)
-      .single();
-
-    if (error) return { gig: null, error };
-    return { gig: data, error: null };
-  } catch (err) {
-    return { gig: null, error: { message: err.message || "Failed to fetch gig." } };
   }
 };
 
