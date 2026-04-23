@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 
 const icons = {
   approved: CheckCircle,
+  verified: CheckCircle,   // backward compat with old DB rows
   pending: Clock,
   rejected: XCircle,
   resubmit_required: RefreshCw,

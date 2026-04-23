@@ -31,7 +31,11 @@ export function hasRole(user, role) {
  * In Next.js: validate against DB or JWT claim.
  */
 export function isVerified(profile) {
-  return profile?.verification_status === VERIFICATION_STATUS.APPROVED;
+  // 'verified' kept for backward compat with old rows before constraint fix
+  return (
+    profile?.verification_status === VERIFICATION_STATUS.APPROVED ||
+    profile?.verification_status === 'verified'
+  );
 }
 
 /**
