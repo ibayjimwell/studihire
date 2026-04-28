@@ -20,18 +20,15 @@ import {
   CheckCircle,
   Loader2,
   AlertCircle,
-  Sparkles,
   FileUp,
   X,
   Plus,
-  Info,
 } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 import {
   createStudentSubmission,
   updateStudentSubmission,
   getStudentLatestSubmission,
-  submitStudentVerification,
   updateStudentProfile,
 } from "@/utils/verificationDbUtils";
 import { authUpdateProfile } from "@/utils/authUtils";
@@ -46,427 +43,196 @@ import {
   extractResumeText,
 } from "@/utils/resumeParsingUtils";
 
+// ─────────────────────────────────────────────
+// Constants
+// ─────────────────────────────────────────────
 const STEPS = [
-  {
-    id: 0,
-    name: "Upload Resume",
-    description: "Upload your resume for AI analysis",
-  },
-  {
-    id: 1,
-    name: "Basic Info",
-    description: "Verify and update your basic information",
-  },
-  { id: 2, name: "Education", description: "Add your education details" },
-  {
-    id: 3,
-    name: "Skills & Experience",
-    description: "Provide your skills and experience",
-  },
-  {
-    id: 4,
-    name: "Upload Student ID",
-    description: "Upload your student ID for verification",
-  },
-  {
-    id: 5,
-    name: "Review & Submit",
-    description: "Review and submit for admin verification",
-  },
+  { id: 0, name: "Upload Resume",      description: "Upload your resume for AI analysis" },
+  { id: 1, name: "Basic Info",         description: "Verify and update your basic information" },
+  { id: 2, name: "Education",          description: "Add your education details" },
+  { id: 3, name: "Skills & Experience",description: "Provide your skills and experience" },
+  { id: 4, name: "Upload Student ID",  description: "Upload your student ID for verification" },
+  { id: 5, name: "Review & Submit",    description: "Review and submit for admin verification" },
 ];
 
+/** Default form state — all strings are empty, never null */
+const DEFAULT_FORM = {
+  full_name:           "",
+  email:               "",
+  phone_number:        "",
+  location:            "",
+  bio:                 "",
+  education_level:     "Bachelor",
+  institution:         "",
+  graduation_year:     new Date().getFullYear(),
+  field_of_study:      "",
+  skills: {
+    "What you can do": [],
+  },
+  experience:          [],
+  years_of_experience: 0,
+  resume_url:          "",
+  student_id_url:      "",
+};
+
+/**
+ * Converts null / undefined values from a DB row into safe defaults so that
+ * React controlled inputs never receive null.
+ * String fields → ""
+ * Number fields → their default
+ * Array  fields → []
+ */
+const sanitizeSubmission = (submission) => ({
+  full_name:           submission.full_name           ?? "",
+  email:               submission.email               ?? "",
+  phone_number:        submission.phone_number        ?? "",
+  location:            submission.location            ?? "",
+  bio:                 submission.bio                 ?? "",
+  education_level:     submission.education_level     ?? "Bachelor",
+  institution:         submission.institution         ?? "",
+  graduation_year:     submission.graduation_year     ?? new Date().getFullYear(),
+  field_of_study:      submission.field_of_study      ?? "",
+  years_of_experience: submission.years_of_experience ?? 0,
+  resume_url:          submission.resume_url          ?? "",
+  student_id_url:      submission.student_id_url      ?? "",
+});
+
+// ─────────────────────────────────────────────
+// Main component
+// ─────────────────────────────────────────────
 export default function StudentOnboarding() {
-  const navigate = useNavigate();
+  const navigate               = useNavigate();
   const { user, updateUserMetadata } = useAuth();
 
-  // Immediate guard: if the user has already completed onboarding or verification,
-  // prevent rendering the onboarding page and redirect to home.
-  if (user && (user.onboarding_completed || (user.verification_status && user.verification_status !== "draft"))) {
+  // Immediate redirect guard
+  if (
+    user &&
+    (user.onboarding_completed ||
+      (user.verification_status && user.verification_status !== "draft"))
+  ) {
     return <Navigate to="/" replace />;
   }
 
-  // Navigation
-  const [currentStep, setCurrentStep] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [currentStep,       setCurrentStep]       = useState(0);
+  const [loading,           setLoading]           = useState(true);
+  const [submitting,        setSubmitting]        = useState(false);
+  const [error,             setError]             = useState("");
+  const [submissionId,      setSubmissionId]      = useState(null);
+  const [resumeFile,        setResumeFile]        = useState(null);
+  const [studentIDFile,     setStudentIDFile]     = useState(null);
+  const [resumeUploading,   setResumeUploading]   = useState(false);
+  const [studentIDUploading,setStudentIDUploading]= useState(false);
+  const [aiParsing,         setAIParsing]         = useState(false);
+  const [skillInput,        setSkillInput]        = useState("");
+  const [experienceInput,   setExperienceInput]   = useState("");
 
-  // Redirect if user has already completed onboarding or submitted verification
-  useEffect(() => {
-    if (!user) return;
-    // If the onboarding_completed flag is set (we set it after successful submission),
-    // redirect the user away from the onboarding page.
-    if (user.onboarding_completed) {
-      navigate("/");
-      return;
-    }
-    // Fallback: if verification_status exists and is not "draft", also redirect.
-    if (user.verification_status && user.verification_status !== "draft") {
-      navigate("/");
-    }
-  }, [user, navigate]);
-
-  // Submission state
-  const [submissionId, setSubmissionId] = useState(null);
-  const [resumeFile, setResumeFile] = useState(null);
-  const [studentIDFile, setStudentIDFile] = useState(null);
-  const [resumeUploading, setResumeUploading] = useState(false);
-  const [studentIDUploading, setStudentIDUploading] = useState(false);
-  const [aiParsing, setAIParsing] = useState(false);
-
-  // Form state
   const [formData, setFormData] = useState({
-    full_name: "",
-    email: user?.email || "",
-    phone_number: "",
-    location: "",
-    bio: "",
-    education_level: "Bachelor",
-    institution: "",
-    graduation_year: new Date().getFullYear(),
-    field_of_study: "",
-    skills: {
-      technical: [],
-      soft: [],
-      languages: [],
-      tools: [],
-    },
-    experience: [],
-    years_of_experience: 0,
-    resume_url: "",
-    student_id_url: "",
+    ...DEFAULT_FORM,
+    email: user?.email ?? "",
   });
 
-  const [skillInput, setSkillInput] = useState("");
-  const [experienceInput, setExperienceInput] = useState("");
-
-  // Initialize - load existing submission if any
+  // ── useEffect redirect (fallback) ──────────────────────────────────────
   useEffect(() => {
-    const initializeOnboarding = async () => {
-      if (!user) return;
+    if (!user) return;
+    if (user.onboarding_completed) { navigate("/"); return; }
+    if (user.verification_status && user.verification_status !== "draft") navigate("/");
+  }, [user, navigate]);
 
+  // ── Initialize — load existing draft ──────────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      if (!user) return;
       try {
         const { data: submission, error: fetchError } =
           await getStudentLatestSubmission(user.id);
 
-        if (fetchError && fetchError.code === "PGRST116") {
-          // Table doesn't exist yet - database migration not run
-          // Create a temporary submission in memory for current session
-          console.warn(
-            "Database not initialized yet. Using session storage only.",
-          );
+        if (fetchError?.code === "PGRST116") {
+          // Table missing — allow in-memory session
           setLoading(false);
           return;
         }
-
         if (fetchError) {
           console.error("Error fetching submission:", fetchError);
-          // Continue with default form - allow user to work offline
           setLoading(false);
           return;
         }
 
-        // If a submission exists and is not in draft status, the user has already submitted
-        // their verification. Redirect them away from the onboarding page.
-        if (submission && submission.submission_status && submission.submission_status !== "draft") {
-          // Redirect to home (or dashboard) since onboarding is only for new users
+        // Non-draft → already submitted, redirect away
+        if (submission?.submission_status && submission.submission_status !== "draft") {
           navigate("/");
           return;
         }
 
-        if (submission && submission.submission_status === "draft") {
-          // Load existing draft
+        if (submission?.submission_status === "draft") {
           setSubmissionId(submission.id);
-          
-          // Transform skills from database format (array) to form format (object with categories)
-          let transformedSkills = {
-            technical: [],
-            soft: [],
-            languages: [],
-            tools: [],
-          };
-          if (submission.skills && Array.isArray(submission.skills)) {
-            // Database stores skills as a flat array, convert to categorized object
-            transformedSkills.technical = submission.skills;
-          } else if (submission.skills && typeof submission.skills === 'object' && !Array.isArray(submission.skills)) {
-            transformedSkills = submission.skills;
+
+          // Skills: DB stores a flat array; form uses { "What you can do": [] }
+          let skills = { "What you can do": [] };
+          if (Array.isArray(submission.skills) && submission.skills.length) {
+            skills["What you can do"] = submission.skills;
           }
-          
-          // Transform experience from database format (text) to form format (array)
-          let transformedExperience = [];
-          if (submission.experience && typeof submission.experience === 'string' && submission.experience.trim()) {
-            transformedExperience = submission.experience.split('\n\n').map(desc => ({
-              description: desc.trim(),
-              start_date: null,
-              end_date: null,
+
+          // Experience: DB stores text; form uses array of { description }
+          let experience = [];
+          if (typeof submission.experience === "string" && submission.experience.trim()) {
+            experience = submission.experience.split("\n\n").map((d) => ({
+              description: d.trim(),
+              start_date:  null,
+              end_date:    null,
             }));
           } else if (Array.isArray(submission.experience)) {
-            transformedExperience = submission.experience;
+            experience = submission.experience;
           }
-          
+
+          // ← KEY FIX: sanitize before merge so no null reaches an input
           setFormData((prev) => ({
             ...prev,
-            ...submission,
-            skills: transformedSkills,
-            experience: transformedExperience,
+            ...sanitizeSubmission(submission),
+            skills,
+            experience,
           }));
 
-          // Determine which step to go to
-          if (submission.student_id_url) {
-            setCurrentStep(5); // Review step
-          } else if (submission.resume_url) {
-            setCurrentStep(2);
-          }
+          if (submission.student_id_url) setCurrentStep(5);
+          else if (submission.resume_url)  setCurrentStep(2);
         } else {
-          // Create new submission
-          const { data: newSubmission, error: createError } =
+          // Create a fresh draft
+          const { data: newSub, error: createError } =
             await createStudentSubmission(user.id, {
-              email: user.email,
-              full_name: user.full_name,
+              email:     user.email,
+              full_name: user.full_name ?? "",
             });
 
-          if (createError && createError.code === "PGRST116") {
-            // Table doesn't exist - database migration not run
-            console.warn(
-              "Database not initialized yet. Using session storage only.",
-            );
-          } else if (createError) {
+          if (createError && createError.code !== "PGRST116") {
             console.error("Error creating submission:", createError);
-          } else if (newSubmission) {
-            setSubmissionId(newSubmission.id);
+          } else if (newSub) {
+            setSubmissionId(newSub.id);
           }
         }
       } finally {
         setLoading(false);
       }
     };
-
-    initializeOnboarding();
+    init();
   }, [user]);
 
-  // Handle resume upload and AI parsing
-  const handleResumeUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // ── Helpers ────────────────────────────────────────────────────────────
+  const set = (field, value) =>
+    setFormData((prev) => ({ ...prev, [field]: value }));
 
-    setError("");
-    const { valid, error: validationError } = validateFileUpload(
-      file,
-      "resume",
-    );
-
-    if (!valid) {
-      setError(validationError);
-      return;
-    }
-
-    if (!user || !user.id) {
-      setError("User not authenticated. Please log in again.");
-      return;
-    }
-
-    setResumeUploading(true);
-
-    try {
-      // 1. Upload resume to Supabase Storage
-      const { url: uploadedUrl, error: uploadError } = await uploadResume(
-        file,
-        user.id,
-      );
-
-      if (uploadError) {
-        const errorMsg = uploadError.message || "Failed to upload resume";
-        console.error("Resume upload error:", uploadError);
-
-        // Storage setup needed
-        if (
-          errorMsg.includes("Bucket not found") ||
-          errorMsg.includes("404") ||
-          errorMsg.includes("400")
-        ) {
-          setError(
-            `⚠️ Storage not configured. Setup needed:\n\n` +
-              `1. Go to Supabase Dashboard → Storage\n` +
-              `2. Create two PUBLIC buckets: "student-resumes" and "student-ids"\n` +
-              `3. Add RLS policies to allow authenticated uploads\n` +
-              `4. Run the database migration (see docs)\n\n` +
-              `After setup, try uploading again.`,
-          );
-        } else {
-          setError(errorMsg);
-        }
-
-        setResumeUploading(false);
-        return;
-      }
-
-      // 2. Extract text from resume
-      setAIParsing(true);
-      let resumeText;
-      let extractError;
-      
-      try {
-        resumeText = await extractResumeText(file);
-      } catch (error) {
-        extractError = error;
-      }
-
-      if (extractError || !resumeText) {
-        setError(
-          "Failed to extract resume text. Please try again or upload manually.",
-        );
-        setAIParsing(false);
-        setResumeUploading(false);
-        return;
-      }
-
-      // 3. Parse with LLM
-      const {
-        parsed_data,
-        confidence,
-        error: parseError,
-      } = await parseResume(resumeText);
-
-      if (parseError) {
-        // Show specific error message for insufficient balance
-        let errorMessage = "AI parsing failed. Your resume has been uploaded. You can fill in the form manually.";
-        if (parseError.code === "insufficient_balance") {
-          errorMessage = parseError.message + " You can still fill in the form manually.";
-        }
-        setError(errorMessage);
-        setAIParsing(false);
-        setResumeUploading(false);
-        setFormData((prev) => ({
-          ...prev,
-          resume_url: uploadedUrl,
-        }));
-        return;
-      }
-
-      // 4. Map parsed data to form fields
-      const mappedData = mapParsedResumeToFormData(parsed_data);
-
-      // 5. Update form with AI-extracted data
-      setFormData((prev) => ({
-        ...prev,
-        resume_url: uploadedUrl,
-        full_name: mappedData.full_name || prev.full_name,
-        email: user.email, // Keep user's email
-        phone_number: mappedData.phone_number || prev.phone_number,
-        location: mappedData.location || prev.location,
-        bio: mappedData.bio || prev.bio,
-        education_level: mappedData.education_level || prev.education_level,
-        years_of_experience:
-          mappedData.years_of_experience || prev.years_of_experience,
-        skills: {
-          technical: mappedData.skills?.technical || prev.skills.technical,
-          soft: mappedData.skills?.soft || prev.skills.soft,
-          languages: mappedData.skills?.languages || prev.skills.languages,
-          tools: mappedData.skills?.tools || prev.skills.tools,
-        },
-        experience: mappedData.experience || prev.experience,
-      }));
-
-      // 6. Update submission with AI parsed data
-      if (submissionId) {
-        const { error: dbError } = await updateStudentSubmission(submissionId, {
-          resume_url: uploadedUrl,
-          ai_parsed_resume: parsed_data,
-          ai_extraction_confidence: confidence,
-        });
-
-        // Silently fail if database not initialized
-        if (dbError && dbError.code !== "PGRST116") {
-          console.error("Database update error:", dbError);
-        }
-      }
-
-      // Move to next step
-      setCurrentStep(1);
-    } catch (err) {
-      setError(err.message || "An error occurred while processing your resume");
-    } finally {
-      setResumeUploading(false);
-      setAIParsing(false);
-    }
-  };
-
-  // Handle student ID upload
-  const handleStudentIDUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setError("");
-    const { valid, error: validationError } = validateFileUpload(
-      file,
-      "student_id",
-    );
-
-    if (!valid) {
-      setError(validationError);
-      return;
-    }
-
-    if (!user || !user.id) {
-      setError("User not authenticated. Please log in again.");
-      return;
-    }
-
-    setStudentIDUploading(true);
-
-    try {
-      const { url: uploadedUrl, error: uploadError } = await uploadStudentID(
-        file,
-        user.id,
-      );
-
-      if (uploadError) {
-        setError(uploadError.message || "Failed to upload student ID");
-        setStudentIDUploading(false);
-        return;
-      }
-
-      setStudentIDFile(file);
-      setFormData((prev) => ({
-        ...prev,
-        student_id_url: uploadedUrl,
-      }));
-
-      // Move to review step
-      setCurrentStep(5);
-    } catch (err) {
-      setError(
-        err.message || "An error occurred while uploading your student ID",
-      );
-    } finally {
-      setStudentIDUploading(false);
-    }
-  };
-
-  // Update form field
-  const updateField = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  // Add skill
   const addSkill = (category) => {
-    if (!skillInput.trim()) return;
-
+    const trimmed = skillInput.trim();
+    if (!trimmed) return;
     setFormData((prev) => ({
       ...prev,
       skills: {
         ...prev.skills,
-        [category]: [...(prev.skills[category] || []), skillInput.trim()],
+        [category]: [...(prev.skills[category] ?? []), trimmed],
       },
     }));
     setSkillInput("");
   };
 
-  // Remove skill
-  const removeSkill = (category, index) => {
+  const removeSkill = (category, index) =>
     setFormData((prev) => ({
       ...prev,
       skills: {
@@ -474,278 +240,320 @@ export default function StudentOnboarding() {
         [category]: prev.skills[category].filter((_, i) => i !== index),
       },
     }));
-  };
 
-  // Add experience
   const addExperience = () => {
-    if (!experienceInput.trim()) return;
-
+    const trimmed = experienceInput.trim();
+    if (!trimmed) return;
     setFormData((prev) => ({
       ...prev,
       experience: [
-        ...(prev.experience || []),
-        {
-          description: experienceInput.trim(),
-          start_date: null,
-          end_date: null,
-        },
+        ...(prev.experience ?? []),
+        { description: trimmed, start_date: null, end_date: null },
       ],
     }));
     setExperienceInput("");
   };
 
-  // Remove experience
-  const removeExperience = (index) => {
+  const removeExperience = (index) =>
     setFormData((prev) => ({
       ...prev,
       experience: prev.experience.filter((_, i) => i !== index),
     }));
+
+  // ── Resume upload + AI parse ───────────────────────────────────────────
+  const handleResumeUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+
+    const { valid, error: valErr } = validateFileUpload(file, "resume");
+    if (!valid) { setError(valErr); return; }
+    if (!user?.id) { setError("Not authenticated. Please log in again."); return; }
+
+    setResumeUploading(true);
+    try {
+      const { url: uploadedUrl, error: uploadError } = await uploadResume(file, user.id);
+      if (uploadError) {
+        const msg = uploadError.message ?? "Failed to upload resume";
+        if (msg.includes("Bucket not found") || msg.includes("404") || msg.includes("400")) {
+          setError(
+            "⚠️ Storage not configured.\n\n" +
+            "1. Go to Supabase Dashboard → Storage\n" +
+            "2. Create two PUBLIC buckets: student-resumes and student-ids\n" +
+            "3. Add RLS policies to allow authenticated uploads\n\n" +
+            "Then try again."
+          );
+        } else {
+          setError(msg);
+        }
+        return;
+      }
+
+      setAIParsing(true);
+      let resumeText = "";
+      try {
+        resumeText = await extractResumeText(file);
+      } catch (extractErr) {
+        setError("Failed to read resume. Please try again or fill in manually.");
+        set("resume_url", uploadedUrl);
+        return;
+      }
+
+      const { parsed_data, confidence, error: parseError } = await parseResume(resumeText);
+      if (parseError) {
+        const msg =
+          parseError.code === "insufficient_balance"
+            ? parseError.message + " You can fill in the form manually."
+            : "AI parsing failed. Resume uploaded — please fill in the form manually.";
+        setError(msg);
+        set("resume_url", uploadedUrl);
+        return;
+      }
+
+      const mapped = mapParsedResumeToFormData(parsed_data);
+      setFormData((prev) => ({
+        ...prev,
+        resume_url:          uploadedUrl,
+        full_name:           mapped.full_name           || prev.full_name,
+        email:               user.email,
+        phone_number:        mapped.phone_number        || prev.phone_number,
+        location:            mapped.location            || prev.location,
+        bio:                 mapped.bio                 || prev.bio,
+        education_level:     mapped.education_level     || prev.education_level,
+        years_of_experience: mapped.years_of_experience || prev.years_of_experience,
+        skills: {
+          "What you can do": [
+            ...(mapped.skills?.technical  ?? []),
+            ...(mapped.skills?.soft       ?? []),
+            ...(mapped.skills?.languages  ?? []),
+            ...(mapped.skills?.tools      ?? []),
+          ],
+        },
+        experience: mapped.experience || prev.experience,
+      }));
+
+      if (submissionId) {
+        const { error: dbErr } = await updateStudentSubmission(submissionId, {
+          resume_url:               uploadedUrl,
+          ai_parsed_resume:         parsed_data,
+          ai_extraction_confidence: confidence,
+        });
+        if (dbErr && dbErr.code !== "PGRST116") console.error("DB update error:", dbErr);
+      }
+
+      setCurrentStep(1);
+    } catch (err) {
+      setError(err.message || "An error occurred while processing your resume.");
+    } finally {
+      setResumeUploading(false);
+      setAIParsing(false);
+    }
   };
 
-  // Submit verification
+  // ── Student ID upload ──────────────────────────────────────────────────
+  const handleStudentIDUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError("");
+
+    const { valid, error: valErr } = validateFileUpload(file, "student_id");
+    if (!valid) { setError(valErr); return; }
+    if (!user?.id) { setError("Not authenticated. Please log in again."); return; }
+
+    setStudentIDUploading(true);
+    try {
+      const { url: uploadedUrl, error: uploadError } = await uploadStudentID(file, user.id);
+      if (uploadError) { setError(uploadError.message || "Failed to upload student ID."); return; }
+
+      setStudentIDFile(file);
+      set("student_id_url", uploadedUrl);
+      setCurrentStep(5);
+    } catch (err) {
+      setError(err.message || "An error occurred while uploading your student ID.");
+    } finally {
+      setStudentIDUploading(false);
+    }
+  };
+
+  // ── Final submit ───────────────────────────────────────────────────────
   const handleSubmit = async () => {
     if (!submissionId || !formData.student_id_url) {
-      setError("Please complete all required fields and upload student ID");
+      setError("Please complete all required fields and upload your student ID.");
       return;
     }
-
-    if (!user || !user.id) {
-      setError("User not authenticated. Please log in again.");
-      return;
-    }
+    if (!user?.id) { setError("Not authenticated. Please log in again."); return; }
 
     setSubmitting(true);
     setError("");
 
     try {
-      // Transform data to match database schema
-      const transformedSkills = [];
-      if (formData.skills) {
-        // Flatten all skill categories into a single array
-        Object.values(formData.skills).forEach(categorySkills => {
-          if (Array.isArray(categorySkills)) {
-            transformedSkills.push(...categorySkills);
-          }
-        });
+      // Flatten skills object → array
+      const flatSkills = Object.values(formData.skills).flat().filter(Boolean);
+
+      // Flatten experience array → joined text
+      const expText =
+        Array.isArray(formData.experience) && formData.experience.length
+          ? formData.experience.map((e) => e.description).join("\n\n")
+          : "";
+
+      const { error: updateError } = await updateStudentSubmission(submissionId, {
+        full_name:           formData.full_name,
+        email:               formData.email,
+        phone_number:        formData.phone_number   || null,
+        location:            formData.location       || null,
+        bio:                 formData.bio            || null,
+        education_level:     formData.education_level,
+        institution:         formData.institution,
+        graduation_year:     formData.graduation_year,
+        field_of_study:      formData.field_of_study || null,
+        skills:              flatSkills,
+        experience:          expText                 || null,
+        years_of_experience: formData.years_of_experience,
+        student_id_url:      formData.student_id_url,
+        resume_url:          formData.resume_url     || null,
+        submission_status:   "submitted",
+        submitted_at:        new Date().toISOString(),
+      });
+
+      if (updateError && updateError.code !== "PGRST116") {
+        setError("Failed to save your information: " + (updateError.message ?? "Unknown error"));
+        return;
       }
 
-      // Transform experience array to text (join descriptions)
-      const transformedExperience = formData.experience && formData.experience.length > 0 
-        ? formData.experience.map(exp => exp.description).join("\n\n")
-        : "";
-
-      // Update submission with final data AND submit for verification in one call
-      // This is necessary because RLS only allows updating draft submissions
-      // Combining both operations ensures the status change happens while still in draft state
-      const { error: updateError } = await updateStudentSubmission(
-        submissionId,
-        {
-          full_name: formData.full_name,
-          email: formData.email,
-          phone_number: formData.phone_number,
-          location: formData.location,
-          bio: formData.bio,
-          education_level: formData.education_level,
-          institution: formData.institution,
-          graduation_year: formData.graduation_year,
-          field_of_study: formData.field_of_study,
-          skills: transformedSkills, // Convert object to array
-          experience: transformedExperience, // Convert array to text
-          years_of_experience: formData.years_of_experience,
-          student_id_url: formData.student_id_url,
-          resume_url: formData.resume_url,
-          submission_status: "submitted", // Change status to submitted
-          submitted_at: new Date().toISOString(), // Set submission timestamp
-        },
-      );
-
-      if (updateError) {
-        // Allow submission to proceed even if database isn't initialized (PGRST116 = table not found)
-        if (updateError.code !== "PGRST116") {
-          setError("Failed to save your information: " + (updateError.message || "Unknown error"));
-          setSubmitting(false);
-          return;
-        }
-        console.warn("Database not initialized. Data won't be persisted.");
-      }
-
-      // Update user profile (silently fail if profile doesn't exist)
+      // Sync to student_profiles (best-effort)
       try {
         await updateStudentProfile(user.id, {
-          full_name: formData.full_name,
-          email: formData.email,
-          phone_number: formData.phone_number,
-          location: formData.location,
-          bio: formData.bio,
+          full_name:           formData.full_name,
+          email:               formData.email,
+          phone_number:        formData.phone_number || null,
+          location:            formData.location     || null,
+          bio:                 formData.bio          || null,
           verification_status: "submitted",
           onboarding_completed: true,
         });
-        // Persist verification status and onboarding flag to auth metadata
-        try {
-          await authUpdateProfile({
-            verification_status: "submitted",
-            onboarding_completed: true,
-          });
-        } catch (e) {
-          console.warn("Failed to update auth metadata", e);
-        }
-        // Also update the local context flags so ProtectedRoute knows onboarding is done
-        if (updateUserMetadata) {
-          updateUserMetadata({
-            onboarding_completed: true,
-            verification_status: "submitted",
-          });
-        }
-      } catch (profileError) {
-        console.warn("Profile update failed (might not exist yet):", profileError);
-        // Continue anyway - the submission was successful
+      } catch (profileErr) {
+        console.warn("Profile update failed:", profileErr);
       }
 
-      // Navigate to home page with success message
+      // Persist to auth metadata
+      try {
+        await authUpdateProfile({ verification_status: "submitted", onboarding_completed: true });
+      } catch (e) {
+        console.warn("Auth metadata update failed:", e);
+      }
+
+      if (updateUserMetadata) {
+        updateUserMetadata({ onboarding_completed: true, verification_status: "submitted" });
+      }
+
       navigate("/", { state: { submissionSuccess: true } });
     } catch (err) {
-      setError(err.message || "An error occurred while submitting");
+      setError(err.message || "An error occurred while submitting.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  // ── Loading screen ─────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary/5 to-purple-50">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto mb-2" />
-          <p className="text-muted-foreground">Loading your onboarding...</p>
+          <p className="text-muted-foreground">Loading your onboarding…</p>
         </div>
       </div>
     );
   }
 
+  // ── Main render ────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 to-purple-50 py-12 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-foreground">
-              Complete Your Profile
-            </h1>
-          </div>
-          <p className="text-muted-foreground">
-            Submit your resume and ID for verification.
-          </p>
+          <h1 className="text-3xl font-bold text-foreground">Complete Your Profile</h1>
+          <p className="text-muted-foreground mt-1">Submit your resume and ID for verification.</p>
         </div>
 
-        {/* Progress bar */}
+        {/* Progress */}
         <Card className="mb-8 border-border">
           <CardContent className="pt-6">
-            <div className="space-y-3">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-foreground">
-                  Step {currentStep + 1} of {STEPS.length}
-                </span>
-                <span className="text-sm font-medium text-muted-foreground">
-                  {STEPS[currentStep].name}
-                </span>
-              </div>
-              <Progress
-                value={((currentStep + 1) / STEPS.length) * 100}
-                className="h-2"
-              />
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-sm font-medium text-foreground">
+                Step {currentStep + 1} of {STEPS.length}
+              </span>
+              <span className="text-sm text-muted-foreground">{STEPS[currentStep].name}</span>
             </div>
+            <Progress value={((currentStep + 1) / STEPS.length) * 100} className="h-2" />
           </CardContent>
         </Card>
 
-        {/* Error message */}
+        {/* Error banner */}
         {error && (
           <div className="flex gap-3 p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
             <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-red-600 whitespace-pre-line">{error}</p>
           </div>
         )}
 
-        {/* Step Content */}
+        {/* Step content */}
         <Card className="border-border">
           <CardContent className="pt-6">
-            {/* Resume Upload Step */}
             {currentStep === 0 && (
               <ResumeUploadStep
-                {...{
-                  resumeFile,
-                  resumeUploading,
-                  aiParsing,
-                  handleResumeUpload,
-                  onNext: () => setCurrentStep(1),
-                }}
+                resumeUploading={resumeUploading}
+                aiParsing={aiParsing}
+                handleResumeUpload={handleResumeUpload}
+                onNext={() => setCurrentStep(1)}
               />
             )}
-
-            {/* Basic Info Step */}
             {currentStep === 1 && (
               <BasicInfoStep
-                {...{
-                  formData,
-                  updateField,
-                  onNext: () => setCurrentStep(2),
-                  onPrev: () => setCurrentStep(0),
-                }}
+                formData={formData}
+                updateField={set}
+                onNext={() => setCurrentStep(2)}
+                onPrev={() => setCurrentStep(0)}
               />
             )}
-
-            {/* Education Step */}
             {currentStep === 2 && (
               <EducationStep
-                {...{
-                  formData,
-                  updateField,
-                  onNext: () => setCurrentStep(3),
-                  onPrev: () => setCurrentStep(1),
-                }}
+                formData={formData}
+                updateField={set}
+                onNext={() => setCurrentStep(3)}
+                onPrev={() => setCurrentStep(1)}
               />
             )}
-
-            {/* Skills & Experience Step */}
             {currentStep === 3 && (
               <SkillsExperienceStep
-                {...{
-                  formData,
-                  updateField,
-                  skillInput,
-                  setSkillInput,
-                  experienceInput,
-                  setExperienceInput,
-                  addSkill,
-                  removeSkill,
-                  addExperience,
-                  removeExperience,
-                  onNext: () => setCurrentStep(4),
-                  onPrev: () => setCurrentStep(2),
-                }}
+                formData={formData}
+                updateField={set}
+                skillInput={skillInput}
+                setSkillInput={setSkillInput}
+                experienceInput={experienceInput}
+                setExperienceInput={setExperienceInput}
+                addSkill={addSkill}
+                removeSkill={removeSkill}
+                addExperience={addExperience}
+                removeExperience={removeExperience}
+                onNext={() => setCurrentStep(4)}
+                onPrev={() => setCurrentStep(2)}
               />
             )}
-
-            {/* Student ID Upload Step */}
             {currentStep === 4 && (
               <StudentIDUploadStep
-                {...{
-                  studentIDFile,
-                  studentIDUploading,
-                  handleStudentIDUpload,
-                  onNext: () => setCurrentStep(5),
-                  onPrev: () => setCurrentStep(3),
-                }}
+                studentIDFile={studentIDFile}
+                studentIDUploading={studentIDUploading}
+                handleStudentIDUpload={handleStudentIDUpload}
+                onNext={() => setCurrentStep(5)}
+                onPrev={() => setCurrentStep(3)}
               />
             )}
-
-            {/* Review & Submit Step */}
             {currentStep === 5 && (
               <ReviewStep
-                {...{
-                  formData,
-                  submitting,
-                  handleSubmit,
-                  onPrev: () => setCurrentStep(4),
-                }}
+                formData={formData}
+                submitting={submitting}
+                handleSubmit={handleSubmit}
+                onPrev={() => setCurrentStep(4)}
               />
             )}
           </CardContent>
@@ -755,66 +563,50 @@ export default function StudentOnboarding() {
   );
 }
 
-/* Step Components */
+// ─────────────────────────────────────────────
+// Step sub-components
+// ─────────────────────────────────────────────
 
-function ResumeUploadStep({
-  resumeFile,
-  resumeUploading,
-  aiParsing,
-  handleResumeUpload,
-  onNext,
-}) {
+function ResumeUploadStep({ resumeUploading, aiParsing, handleResumeUpload, onNext }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">
-          Upload Your Resume
-        </h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Upload your resume in PDF format. Our system will analyze it and
-          pre-fill your information.
+        <h3 className="text-lg font-semibold text-foreground mb-2">Upload Your Resume</h3>
+        <p className="text-sm text-muted-foreground">
+          Upload your resume in PDF format. Our AI will pre-fill your information.
         </p>
       </div>
 
-      <div className="border-2 border-dashed border-primary/30 rounded-lg p-8 text-center hover:border-primary/60 transition">
+      <label
+        htmlFor="resume-upload"
+        className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-primary/30 rounded-xl cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all"
+      >
+        {resumeUploading || aiParsing ? (
+          <>
+            <Loader2 className="w-9 h-9 text-primary animate-spin mb-3" />
+            <p className="text-sm font-medium text-foreground">
+              {aiParsing ? "Analyzing your resume…" : "Uploading resume…"}
+            </p>
+          </>
+        ) : (
+          <>
+            <FileUp className="w-9 h-9 text-primary mb-3" />
+            <p className="text-sm font-medium text-foreground">Click to upload or drag and drop</p>
+            <p className="text-xs text-muted-foreground mt-1">PDF (max 10 MB)</p>
+          </>
+        )}
         <input
+          id="resume-upload"
           type="file"
-          onChange={handleResumeUpload}
-          disabled={resumeUploading || aiParsing}
           accept=".pdf"
           className="hidden"
-          id="resume-upload"
-        />
-        <label htmlFor="resume-upload" className="cursor-pointer block">
-          {resumeUploading || aiParsing ? (
-            <div className="space-y-2">
-              <Loader2 className="w-8 h-8 text-primary mx-auto animate-spin" />
-              <p className="text-sm font-medium text-foreground">
-                {aiParsing
-                  ? "Analyzing your resume..."
-                  : "Uploading resume..."}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <FileUp className="w-8 h-8 text-primary mx-auto" />
-              <p className="text-sm font-medium text-foreground">
-                Click to upload or drag and drop
-              </p>
-              <p className="text-xs text-muted-foreground">
-                PDF (max 5MB)
-              </p>
-            </div>
-          )}
-        </label>
-      </div>
-
-      <div className="flex justify-end gap-2">
-        <Button
-          variant="outline"
           disabled={resumeUploading || aiParsing}
-          onClick={onNext}
-        >
+          onChange={handleResumeUpload}
+        />
+      </label>
+
+      <div className="flex justify-end">
+        <Button variant="outline" disabled={resumeUploading || aiParsing} onClick={onNext}>
           Skip & Fill Manually
         </Button>
       </div>
@@ -825,26 +617,24 @@ function ResumeUploadStep({
 function BasicInfoStep({ formData, updateField, onNext, onPrev }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">
-          Basic Information
-        </h3>
-      </div>
+      <h3 className="text-lg font-semibold text-foreground">Basic Information</h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <Label htmlFor="fullName">Full Name *</Label>
           <Input
             id="fullName"
+            className="mt-1"
             value={formData.full_name}
             onChange={(e) => updateField("full_name", e.target.value)}
             placeholder="Your full name"
           />
         </div>
         <div>
-          <Label htmlFor="email">Email *</Label>
+          <Label htmlFor="email">Email</Label>
           <Input
             id="email"
+            className="mt-1"
             value={formData.email}
             disabled
             placeholder="Your email (from signup)"
@@ -854,15 +644,17 @@ function BasicInfoStep({ formData, updateField, onNext, onPrev }) {
           <Label htmlFor="phone">Phone Number</Label>
           <Input
             id="phone"
+            className="mt-1"
             value={formData.phone_number}
             onChange={(e) => updateField("phone_number", e.target.value)}
-            placeholder="+1 (555) 000-0000"
+            placeholder="+63 912 345 6789"
           />
         </div>
         <div>
           <Label htmlFor="location">Location</Label>
           <Input
             id="location"
+            className="mt-1"
             value={formData.location}
             onChange={(e) => updateField("location", e.target.value)}
             placeholder="City, Country"
@@ -874,21 +666,20 @@ function BasicInfoStep({ formData, updateField, onNext, onPrev }) {
         <Label htmlFor="bio">Bio / Professional Summary</Label>
         <Textarea
           id="bio"
+          className="mt-1"
+          rows={4}
           value={formData.bio}
           onChange={(e) => updateField("bio", e.target.value)}
-          placeholder="Tell us about yourself..."
-          rows={4}
+          placeholder="Tell us about yourself…"
         />
       </div>
 
       <div className="flex justify-between gap-2">
-        <Button variant="outline" onClick={onPrev}>
-          Back
-        </Button>
+        <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button
-          onClick={onNext}
-          disabled={!formData.full_name}
           className="gradient-primary text-white border-0"
+          onClick={onNext}
+          disabled={!formData.full_name.trim()}
         >
           Continue
         </Button>
@@ -900,22 +691,16 @@ function BasicInfoStep({ formData, updateField, onNext, onPrev }) {
 function EducationStep({ formData, updateField, onNext, onPrev }) {
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">
-          Education Details
-        </h3>
-      </div>
+      <h3 className="text-lg font-semibold text-foreground">Education Details</h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <Label htmlFor="educationLevel">Education Level</Label>
+          <Label>Education Level</Label>
           <Select
             value={formData.education_level}
-            onValueChange={(value) => updateField("education_level", value)}
+            onValueChange={(v) => updateField("education_level", v)}
           >
-            <SelectTrigger id="educationLevel">
-              <SelectValue />
-            </SelectTrigger>
+            <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Diploma">Diploma</SelectItem>
               <SelectItem value="Bachelor">Bachelor's Degree</SelectItem>
@@ -929,41 +714,40 @@ function EducationStep({ formData, updateField, onNext, onPrev }) {
           <Label htmlFor="institution">Institution / University *</Label>
           <Input
             id="institution"
+            className="mt-1"
             value={formData.institution}
             onChange={(e) => updateField("institution", e.target.value)}
-            placeholder="Your school/university name"
+            placeholder="Your school/university"
           />
         </div>
         <div>
           <Label htmlFor="fieldOfStudy">Field of Study</Label>
           <Input
             id="fieldOfStudy"
+            className="mt-1"
             value={formData.field_of_study}
             onChange={(e) => updateField("field_of_study", e.target.value)}
-            placeholder="e.g., Computer Science"
+            placeholder="e.g. Computer Science"
           />
         </div>
         <div>
-          <Label htmlFor="graduationYear">Expected Graduation Year</Label>
+          <Label htmlFor="gradYear">Expected Graduation Year</Label>
           <Input
-            id="graduationYear"
+            id="gradYear"
             type="number"
+            className="mt-1"
             value={formData.graduation_year}
-            onChange={(e) =>
-              updateField("graduation_year", parseInt(e.target.value))
-            }
+            onChange={(e) => updateField("graduation_year", parseInt(e.target.value) || 0)}
           />
         </div>
       </div>
 
       <div className="flex justify-between gap-2">
-        <Button variant="outline" onClick={onPrev}>
-          Back
-        </Button>
+        <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button
-          onClick={onNext}
-          disabled={!formData.institution}
           className="gradient-primary text-white border-0"
+          onClick={onNext}
+          disabled={!formData.institution.trim()}
         >
           Continue
         </Button>
@@ -973,79 +757,46 @@ function EducationStep({ formData, updateField, onNext, onPrev }) {
 }
 
 function SkillsExperienceStep({
-  formData,
-  updateField,
-  skillInput,
-  setSkillInput,
-  experienceInput,
-  setExperienceInput,
-  addSkill,
-  removeSkill,
-  addExperience,
-  removeExperience,
-  onNext,
-  onPrev,
+  formData, updateField,
+  skillInput, setSkillInput,
+  experienceInput, setExperienceInput,
+  addSkill, removeSkill,
+  addExperience, removeExperience,
+  onNext, onPrev,
 }) {
-  const skillCategories = ["What you can do"];
+  const CATEGORY = "What you can do";
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-foreground mb-4">
-          Skills & Experience
-        </h3>
-      </div>
+      <h3 className="text-lg font-semibold text-foreground">Skills & Experience</h3>
 
       {/* Skills */}
       <div>
-        <div className="space-y-3">
-          {skillCategories.map((category) => (
-            <div key={category}>
-              <label className="text-sm font-medium text-foreground capitalize mb-1 block">
-                {category}
-              </label>
-              <div className="flex gap-2">
-                <Input
-                  placeholder={`Add your skills and press Enter eg: JavaScript, Communication, Photoshop...`}
-                  value={skillInput}
-                  onChange={(e) => setSkillInput(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === "Enter") {
-                      addSkill(category);
-                    }
-                  }}
-                />
-                <Button
-                  onClick={() => addSkill(category)}
-                  variant="outline"
-                  size="icon"
-                  disabled={!skillInput.trim()}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-              </div>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {formData.skills[category]?.map((skill, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 bg-primary/10 text-primary px-3 py-1 rounded-full text-sm"
-                  >
-                    {skill}
-                    <button
-                      onClick={() => removeSkill(category, index)}
-                      className="hover:opacity-70"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
+        <Label className="block mb-1">{CATEGORY}</Label>
+        <div className="flex gap-2">
+          <Input
+            value={skillInput}
+            onChange={(e) => setSkillInput(e.target.value)}
+            placeholder="e.g. JavaScript, Photoshop, Communication…"
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addSkill(CATEGORY); } }}
+          />
+          <Button type="button" variant="outline" size="icon" onClick={() => addSkill(CATEGORY)} disabled={!skillInput.trim()}>
+            <Plus className="w-4 h-4" />
+          </Button>
+        </div>
+        <div className="flex flex-wrap gap-2 mt-2">
+          {(formData.skills[CATEGORY] ?? []).map((skill, i) => (
+            <div key={i} className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1 rounded-full text-sm">
+              {skill}
+              <button onClick={() => removeSkill(CATEGORY, i)} className="hover:opacity-70">
+                <X className="w-3 h-3" />
+              </button>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Years of Experience */}
+      {/* Years of experience */}
       <div>
         <Label htmlFor="yearsExp">Years of Experience</Label>
         <Input
@@ -1053,48 +804,32 @@ function SkillsExperienceStep({
           type="number"
           min="0"
           step="0.5"
+          className="mt-1"
           value={formData.years_of_experience}
-          onChange={(e) =>
-            updateField("years_of_experience", parseFloat(e.target.value))
-          }
-          placeholder="0"
+          onChange={(e) => updateField("years_of_experience", parseFloat(e.target.value) || 0)}
         />
       </div>
 
-      {/* Experience */}
+      {/* Work experience */}
       <div>
-        <h4 className="font-medium text-foreground mb-3">Work Experience</h4>
+        <h4 className="font-medium text-foreground mb-2">Work Experience</h4>
         <div className="flex gap-2 mb-3">
           <Textarea
+            rows={2}
             value={experienceInput}
             onChange={(e) => setExperienceInput(e.target.value)}
-            placeholder="Describe your work experience..."
-            rows={2}
+            placeholder="Describe a work experience…"
           />
-          <Button
-            onClick={addExperience}
-            variant="outline"
-            size="icon"
-            disabled={!experienceInput.trim()}
-          >
+          <Button type="button" variant="outline" size="icon" onClick={addExperience} disabled={!experienceInput.trim()}>
             <Plus className="w-4 h-4" />
           </Button>
         </div>
         <div className="space-y-2">
-          {formData.experience?.map((exp, index) => (
-            <div
-              key={index}
-              className="flex justify-between items-start gap-3 p-3 bg-gray-50 rounded-lg"
-            >
-              <p className="text-sm text-foreground flex-1">
-                {exp.description}
-              </p>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => removeExperience(index)}
-              >
-                <X className="w-4 h-4 text-red-600" />
+          {(formData.experience ?? []).map((exp, i) => (
+            <div key={i} className="flex justify-between items-start gap-3 p-3 bg-muted/40 rounded-lg">
+              <p className="text-sm flex-1">{exp.description}</p>
+              <Button variant="ghost" size="icon" onClick={() => removeExperience(i)}>
+                <X className="w-4 h-4 text-destructive" />
               </Button>
             </div>
           ))}
@@ -1102,87 +837,60 @@ function SkillsExperienceStep({
       </div>
 
       <div className="flex justify-between gap-2">
-        <Button variant="outline" onClick={onPrev}>
-          Back
-        </Button>
-        <Button
-          onClick={onNext}
-          className="gradient-primary text-white border-0"
-        >
-          Continue
-        </Button>
+        <Button variant="outline" onClick={onPrev}>Back</Button>
+        <Button className="gradient-primary text-white border-0" onClick={onNext}>Continue</Button>
       </div>
     </div>
   );
 }
 
-function StudentIDUploadStep({
-  studentIDFile,
-  studentIDUploading,
-  handleStudentIDUpload,
-  onNext,
-  onPrev,
-}) {
+function StudentIDUploadStep({ studentIDFile, studentIDUploading, handleStudentIDUpload, onNext, onPrev }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">
-          Upload Student ID
-        </h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Upload a clear photo or scan of your student ID. This is required for
-          verification.
-        </p>
+        <h3 className="text-lg font-semibold text-foreground mb-1">Upload Student ID</h3>
+        <p className="text-sm text-muted-foreground">Upload a clear photo or scan of your student ID.</p>
       </div>
 
-      <div className="border-2 border-dashed border-primary/30 rounded-lg p-8 text-center hover:border-primary/60 transition">
+      <label
+        htmlFor="student-id-upload"
+        className="flex flex-col items-center justify-center p-10 border-2 border-dashed border-primary/30 rounded-xl cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-all"
+      >
+        {studentIDUploading ? (
+          <>
+            <Loader2 className="w-9 h-9 text-primary animate-spin mb-3" />
+            <p className="text-sm font-medium">Uploading…</p>
+          </>
+        ) : (
+          <>
+            <Upload className="w-9 h-9 text-primary mb-3" />
+            <p className="text-sm font-medium">Click to upload or drag and drop</p>
+            <p className="text-xs text-muted-foreground mt-1">JPG, PNG, or PDF (max 10 MB)</p>
+          </>
+        )}
         <input
+          id="student-id-upload"
           type="file"
-          onChange={handleStudentIDUpload}
-          disabled={studentIDUploading}
           accept="image/*,.pdf"
           className="hidden"
-          id="student-id-upload"
+          disabled={studentIDUploading}
+          onChange={handleStudentIDUpload}
         />
-        <label htmlFor="student-id-upload" className="cursor-pointer block">
-          {studentIDUploading ? (
-            <div className="space-y-2">
-              <Loader2 className="w-8 h-8 text-primary mx-auto animate-spin" />
-              <p className="text-sm font-medium text-foreground">
-                Uploading...
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Upload className="w-8 h-8 text-primary mx-auto" />
-              <p className="text-sm font-medium text-foreground">
-                Click to upload or drag and drop
-              </p>
-              <p className="text-xs text-muted-foreground">
-                JPG, PNG, or PDF (max 10MB)
-              </p>
-            </div>
-          )}
-        </label>
-      </div>
+      </label>
 
       {studentIDFile && (
         <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
           <CheckCircle className="w-5 h-5 text-green-600" />
-          <p className="text-sm text-green-700">
-            {studentIDFile.name} uploaded successfully
-          </p>
+          <p className="text-sm text-green-700">{studentIDFile.name} uploaded successfully</p>
         </div>
       )}
 
       <div className="flex justify-between gap-2">
-        <Button variant="outline" onClick={onPrev}>
-          Back
-        </Button>
+        <Button variant="outline" onClick={onPrev}>Back</Button>
         <Button
+          className="gradient-primary text-white border-0"
           onClick={onNext}
           disabled={studentIDUploading || !studentIDFile}
-          className="gradient-primary text-white border-0"
         >
           Continue to Review
         </Button>
@@ -1192,146 +900,86 @@ function StudentIDUploadStep({
 }
 
 function ReviewStep({ formData, submitting, handleSubmit, onPrev }) {
+  const allSkills = Object.values(formData.skills ?? {}).flat().filter(Boolean);
+
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-foreground mb-2">
-          Review Your Information
-        </h3>
-        <p className="text-sm text-muted-foreground mb-4">
-          Please review all the information below before submitting for admin
-          verification.
-        </p>
+        <h3 className="text-lg font-semibold text-foreground mb-1">Review Your Information</h3>
+        <p className="text-sm text-muted-foreground">Check everything before submitting.</p>
       </div>
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Personal Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Name:</span>{" "}
-              {formData.full_name}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Email:</span>{" "}
-              {formData.email}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Phone:</span>{" "}
-              {formData.phone_number || "Not provided"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Location:</span>{" "}
-              {formData.location || "Not provided"}
-            </div>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Personal Information</CardTitle></CardHeader>
+          <CardContent className="space-y-1.5 text-sm">
+            <p><span className="text-muted-foreground">Name: </span>{formData.full_name}</p>
+            <p><span className="text-muted-foreground">Email: </span>{formData.email}</p>
+            <p><span className="text-muted-foreground">Phone: </span>{formData.phone_number || "Not provided"}</p>
+            <p><span className="text-muted-foreground">Location: </span>{formData.location || "Not provided"}</p>
           </CardContent>
         </Card>
 
         <Card className="border-border/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Education</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div>
-              <span className="text-muted-foreground">Institution:</span>{" "}
-              {formData.institution}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Field:</span>{" "}
-              {formData.field_of_study || "Not specified"}
-            </div>
-            <div>
-              <span className="text-muted-foreground">Graduation Year:</span>{" "}
-              {formData.graduation_year}
-            </div>
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Education</CardTitle></CardHeader>
+          <CardContent className="space-y-1.5 text-sm">
+            <p><span className="text-muted-foreground">Institution: </span>{formData.institution}</p>
+            <p><span className="text-muted-foreground">Field: </span>{formData.field_of_study || "Not specified"}</p>
+            <p><span className="text-muted-foreground">Grad. Year: </span>{formData.graduation_year}</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Skills */}
-      <Card className="border-border/50">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm">Skills</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {formData.skills && typeof formData.skills === 'object' && Object.entries(formData.skills).map(
-            ([category, skills]) =>
-              Array.isArray(skills) && skills.length > 0 && (
-                <div key={category}>
-                  <span className="text-muted-foreground capitalize">
-                    {category}:
-                  </span>
-                  <div className="flex flex-wrap gap-2 mt-1">
-                    {skills.map((skill, idx) => (
-                      <span
-                        key={idx}
-                        className="bg-primary/10 text-primary px-2 py-1 rounded text-xs"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ),
-          )}
-        </CardContent>
-      </Card>
+      {allSkills.length > 0 && (
+        <Card className="border-border/50">
+          <CardHeader className="pb-3"><CardTitle className="text-sm">Skills</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-1.5">
+              {allSkills.map((s, i) => (
+                <span key={i} className="bg-primary/10 text-primary px-2 py-0.5 rounded text-xs">{s}</span>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* Uploaded Files */}
       <Card className="border-border/50 bg-blue-50">
         <CardHeader className="pb-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <CheckCircle className="w-4 h-4 text-green-600" />
-            Uploaded Documents
+            <CheckCircle className="w-4 h-4 text-green-600" /> Uploaded Documents
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm">
+        <CardContent className="space-y-1.5 text-sm">
           {formData.resume_url && (
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <span>Resume uploaded</span>
+              <CheckCircle className="w-4 h-4 text-green-600" /><span>Resume uploaded</span>
             </div>
           )}
           {formData.student_id_url && (
             <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <span>Student ID uploaded</span>
+              <CheckCircle className="w-4 h-4 text-green-600" /><span>Student ID uploaded</span>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Info Message */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <p className="text-sm text-blue-900">
-          <strong>Next Step:</strong> Your information will be sent to our
-          admins for verification. You'll receive an email once your profile is
-          verified. This usually takes 1-2 business days.
+      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+        <p className="text-sm text-green-800">
+          <strong>Next:</strong> Your information will be sent to our admins for verification. This usually takes 1–2 business days.
         </p>
       </div>
 
       <div className="flex justify-between gap-2">
-        <Button variant="outline" onClick={onPrev} disabled={submitting}>
-          Back
-        </Button>
+        <Button variant="outline" onClick={onPrev} disabled={submitting}>Back</Button>
         <Button
+          className="gradient-primary text-white border-0"
           onClick={handleSubmit}
           disabled={submitting}
-          className="gradient-primary text-white border-0"
         >
           {submitting ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Submitting...
-            </>
+            <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting…</>
           ) : (
-            <>
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Submit for Verification
-            </>
+            <><CheckCircle className="w-4 h-4 mr-2" /> Submit for Verification</>
           )}
         </Button>
       </div>

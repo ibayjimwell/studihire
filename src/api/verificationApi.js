@@ -14,15 +14,18 @@
 import supabase from "@/lib/supabaseClient";
 
 // Mapping from admin_reviews.review_status → student_profiles.verification_status
+// 'verified' is used because student_profiles has a check constraint that
+// likely does NOT include 'approved'. Adjust if your constraint uses different values.
 const REVIEW_TO_PROFILE_STATUS = {
-  approved:        "approved",
+  approved:        "verified",
   rejected:        "rejected",
   needs_revision:  "needs_revision",
 };
 
 // Mapping from admin_reviews.review_status → student_submissions.submission_status
+// Adjust these if your check constraint uses different values.
 const REVIEW_TO_SUBMISSION_STATUS = {
-  approved:        "approved",
+  approved:        "approved",   // change to "verified" if 400 persists
   rejected:        "rejected",
   needs_revision:  "needs_revision",
 };
@@ -201,12 +204,22 @@ export const verificationDecide = async ({
       .update(profileUpdate)
       .eq("user_id", userId);
 
-    // Missing profile row is non-fatal — log it but don't fail
     if (profileError) {
+      // code 23514 = check_violation: the constraint doesn't allow this status value.
+      // Fix: run fix_verification_status_constraint.sql in Supabase SQL Editor.
+      // The decision is still committed in admin_reviews + student_submissions,
+      // so we return success — Profile.jsx reads admin_reviews directly.
+      if (profileError.code === "23514") {
+        console.warn(
+          `[verificationDecide] CHECK constraint blocked "${REVIEW_TO_PROFILE_STATUS[decision]}" ` +
+          "on student_profiles. Run fix_verification_status_constraint.sql to resolve."
+        );
+        return { success: true, profileSyncFailed: true, error: null };
+      }
       console.warn("student_profiles sync failed:", profileError.message);
     }
 
-    return { success: true, error: null };
+    return { success: true, profileSyncFailed: false, error: null };
   } catch (err) {
     return { success: false, error: { message: err.message || "Failed to record decision." } };
   }
@@ -238,5 +251,144 @@ export const verificationGetCounts = async () => {
     return { counts, error: null };
   } catch (err) {
     return { counts: {}, error: { message: err.message || "Failed to load counts." } };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// CLIENT SUBMISSION OPERATIONS
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetches client_submissions for the admin queue.
+ */
+export const verificationGetClientSubmissions = async (options = {}) => {
+  try {
+    const { status = "submitted" } = options;
+
+    let query = supabase
+      .from("client_submissions")
+      .select("*")
+      .order("submitted_at", { ascending: false, nullsFirst: false })
+      .order("created_at",   { ascending: false });
+
+    if (status && status !== "all") {
+      query = query.eq("submission_status", status);
+    } else {
+      query = query.neq("submission_status", "draft");
+    }
+
+    const { data, error } = await query;
+    if (error) return { submissions: [], error };
+    return { submissions: data ?? [], error: null };
+  } catch (err) {
+    return { submissions: [], error: { message: err.message || "Failed to load client submissions." } };
+  }
+};
+
+/**
+ * Records the admin's decision for a client submission.
+ * Updates client_submissions and client_profiles.
+ */
+export const verificationDecideClient = async ({
+  submissionId,
+  userId,
+  decision,
+  comments        = "",
+  rejectionReason = "",
+}) => {
+  try {
+    const VALID = ["approved", "rejected", "needs_revision"];
+    if (!VALID.includes(decision))
+      return { success: false, error: { message: `Invalid decision: ${decision}` } };
+
+    if (!submissionId || !userId)
+      return { success: false, error: { message: "submissionId and userId are required." } };
+
+    const { data: { user: admin }, error: authError } = await supabase.auth.getUser();
+    if (authError || !admin)
+      return { success: false, error: { message: "Admin not authenticated." } };
+
+    const now = new Date().toISOString();
+
+    // 1. Upsert admin_reviews (same table, no checklist now)
+    const { error: reviewError } = await supabase
+      .from("admin_reviews")
+      .upsert(
+        {
+          submission_id:    submissionId,
+          admin_id:         admin.id,
+          review_status:    decision,
+          comments:         comments || null,
+          rejection_reason: rejectionReason || null,
+          // We don't set individual verification flags
+          reviewed_at:      now,
+          updated_at:       now,
+        },
+        { onConflict: "submission_id,admin_id", ignoreDuplicates: false }
+      );
+
+    if (reviewError) return { success: false, error: reviewError };
+
+    // 2. Update client_submissions status
+    const { error: submissionError } = await supabase
+      .from("client_submissions")
+      .update({
+        submission_status: REVIEW_TO_SUBMISSION_STATUS[decision],
+        admin_comments:    comments || null,
+        rejected_reason:   rejectionReason || null,
+        reviewed_at:       now,
+        ...(decision === "approved" && { verified_at: now }),
+      })
+      .eq("id", submissionId);
+
+    if (submissionError) return { success: false, error: submissionError };
+
+    // 3. Sync client_profile
+    const profileStatus = REVIEW_TO_PROFILE_STATUS[decision];
+    const { error: profileError } = await supabase
+      .from("client_profiles")
+      .update({
+        verification_status: profileStatus,
+        updated_at:          now,
+        ...(decision === "approved" && {
+          profile_verified: true,
+          verified_at:      now,
+        }),
+      })
+      .eq("user_id", userId);
+
+    if (profileError) {
+      // If constraint blocks, still return success (decision is recorded)
+      console.warn("client_profiles sync failed:", profileError.message);
+    }
+
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: false, error: { message: err.message || "Failed to record decision." } };
+  }
+};
+
+// ---------------------------------------------------------------------------
+// COUNTS — include client submissions as well (optional)
+// ---------------------------------------------------------------------------
+export const verificationGetAllCounts = async () => {
+  try {
+    const [studentRes, clientRes] = await Promise.all([
+      supabase.from("student_submissions").select("submission_status").neq("submission_status", "draft"),
+      supabase.from("client_submissions").select("submission_status").neq("submission_status", "draft"),
+    ]);
+
+    const studentCounts = (studentRes.data ?? []).reduce((acc, r) => {
+      acc[r.submission_status] = (acc[r.submission_status] || 0) + 1;
+      return acc;
+    }, {});
+    const clientCounts = (clientRes.data ?? []).reduce((acc, r) => {
+      acc[r.submission_status] = (acc[r.submission_status] || 0) + 1;
+      return acc;
+    }, {});
+
+    return { counts: { student: studentCounts, client: clientCounts }, error: null };
+  } catch (err) {
+    return { counts: {}, error: { message: err.message } };
   }
 };

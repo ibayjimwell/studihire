@@ -48,6 +48,7 @@ import StudentMyOrders from "./pages/student/MyOrders";
 import StudentOrderWorkspace from "./pages/student/StudentOrderWorkspace";
 import ClientMyOrders from "./pages/client/MyOrders";
 import ClientApplicants from "./pages/client/Applicants";
+import ClientProfile from "./pages/client/Profile";
 import StudentGigs from "./pages/student/StudentGigs";
 
 const AuthenticatedApp = () => {
@@ -167,6 +168,14 @@ const AuthenticatedApp = () => {
         element={
           <ProtectedRoute requiredRole="client">
             <ClientDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/client/profile"
+        element={
+          <ProtectedRoute requiredRole="client">
+            <ClientProfile />
           </ProtectedRoute>
         }
       />

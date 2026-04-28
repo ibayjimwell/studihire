@@ -1,23 +1,49 @@
 /**
- * DeepSeek Resume Parsing Prompts and Utilities
- * Handles AI-based resume analysis and data extraction
+ * Resume Parsing Utilities
+ * Handles PDF text extraction and AI-based resume analysis.
+ *
+ * FIX: pdfjs-dist worker is now imported directly from the installed package
+ * so Vite bundles it as a local asset — no CDN, no version mismatch, no CORS.
  */
 
-/**
- * System prompt for DeepSeek AI to analyze resume
- * Provides clear instructions on JSON structure and requirements
- */
-export const RESUME_ANALYSIS_SYSTEM_PROMPT = `You are a professional resume parser and career counselor. Your task is to analyze a resume and extract structured information into a JSON format.
+// ---------------------------------------------------------------------------
+// pdfjs worker — import from the local package, not from unpkg
+// ---------------------------------------------------------------------------
+import * as pdfjsLib from "pdfjs-dist";
 
-IMPORTANT INSTRUCTIONS:
-1. Extract ONLY factual information from the resume
-2. Be accurate and precise - if information is unclear, mark it as "not_found"
-3. Return ONLY valid JSON, no markdown, no extra text
-4. Do not make assumptions or infer information not in the resume
-5. For dates, use ISO format (YYYY-MM-DD) when possible
-6. For arrays, return empty array [] if not found
+// This import resolves to node_modules/pdfjs-dist/build/pdf.worker.min.mjs.
+// Vite handles it as a URL reference (static asset) when using `?url`.
+// If you are on pdfjs-dist ≥ 4.x, `?url` suffix is required.
+// If the line below causes a build error, try the alternative commented out beneath it.
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+// Alternative for older pdfjs-dist (2.x / 3.x):
+// import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.js?url";
 
-JSON STRUCTURE TO RETURN:
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+
+// ---------------------------------------------------------------------------
+// AI config
+// ---------------------------------------------------------------------------
+const AI_CONFIG = {
+  API_URL:     "https://openrouter.ai/api/v1/chat/completions",
+  MODEL:       "openrouter/free",
+  TEMPERATURE: 0.3,
+  MAX_TOKENS:  4000,
+  TOP_P:       0.95,
+};
+
+// ---------------------------------------------------------------------------
+// System prompt
+// ---------------------------------------------------------------------------
+const RESUME_ANALYSIS_SYSTEM_PROMPT = `You are a professional resume parser. Extract structured information from the resume into JSON.
+
+RULES:
+1. Extract ONLY factual information present in the resume.
+2. Return ONLY valid JSON — no markdown, no code fences, no extra text.
+3. Use null for missing fields and [] for missing arrays.
+4. For dates, use ISO format (YYYY-MM-DD) when possible.
+
+JSON STRUCTURE:
 {
   "personal_info": {
     "full_name": "string or null",
@@ -25,333 +51,260 @@ JSON STRUCTURE TO RETURN:
     "phone": "string or null",
     "location": "string or null",
     "professional_summary": "string or null",
-    "extracted_confidence": 0.0 to 1.0
+    "extracted_confidence": 0.0
   },
   "education": [
     {
       "institution": "string",
-      "degree": "string (e.g., Bachelor of Science, Master's)",
+      "degree": "string",
       "field_of_study": "string",
-      "graduation_date": "YYYY-MM-DD or null",
+      "graduation_date": "YYYY or null",
       "gpa": "string or null",
       "honors": "string or null"
     }
   ],
   "skills": {
-    "technical": ["skill1", "skill2"],
-    "soft": ["skill1", "skill2"],
-    "languages": ["language1", "language2"],
-    "tools_and_platforms": ["tool1", "tool2"],
-    "other": ["skill1", "skill2"]
+    "technical": [],
+    "soft": [],
+    "languages": [],
+    "tools_and_platforms": [],
+    "other": []
   },
   "experience": [
     {
       "job_title": "string",
       "company": "string",
-      "start_date": "YYYY-MM-DD or null",
-      "end_date": "YYYY-MM-DD or null",
-      "is_current": true/false,
-      "duration_months": number or null,
-      "description": "string",
-      "responsibilities": ["responsibility1", "responsibility2"],
-      "achievements": ["achievement1", "achievement2"]
+      "start_date": "YYYY or null",
+      "end_date": "YYYY or null",
+      "is_current": false,
+      "duration_months": null,
+      "description": "string or null",
+      "responsibilities": [],
+      "achievements": []
     }
   ],
-  "certifications": [
-    {
-      "name": "string",
-      "issuer": "string",
-      "issue_date": "YYYY-MM-DD or null",
-      "expiry_date": "YYYY-MM-DD or null",
-      "credential_id": "string or null",
-      "credential_url": "string or null"
-    }
-  ],
-  "projects": [
-    {
-      "name": "string",
-      "description": "string",
-      "technologies": ["tech1", "tech2"],
-      "url": "string or null",
-      "start_date": "YYYY-MM-DD or null",
-      "end_date": "YYYY-MM-DD or null"
-    }
-  ],
+  "certifications": [],
+  "projects": [],
   "summary": {
-    "total_experience_years": number or null,
-    "highest_education_level": "string (e.g., Bachelor, Master, PhD)",
-    "key_skills": ["skill1", "skill2", "skill3", "skill4", "skill5"],
-    "industries": ["industry1", "industry2"],
-    "job_titles_history": ["title1", "title2", "title3"],
-    "parsing_notes": "any additional notes or clarifications"
+    "total_experience_years": null,
+    "highest_education_level": "string",
+    "key_skills": [],
+    "industries": [],
+    "job_titles_history": [],
+    "parsing_notes": "string"
   }
-}
+}`;
 
-Remember: Return ONLY the JSON. No explanations, no markdown, no additional text.`;
-
-/**
- * User prompt template for sending resume content to LLM
- */
-export const RESUME_ANALYSIS_USER_PROMPT_TEMPLATE = (resumeText) => {
-  return `Please analyze this resume and extract all information into the JSON structure I provided. Return ONLY valid JSON:
-
-RESUME CONTENT:
----
-${resumeText}
----
-
-Return the extracted data as JSON only.`;
-};
+// ---------------------------------------------------------------------------
+// PDF text extraction — reliable, bundled worker
+// ---------------------------------------------------------------------------
 
 /**
- * Configuration for OpenRouter API (using llama-3.1-70b-instruct model)
- * OpenRouter provides access to various AI models including free ones
- */
-export const AI_CONFIG = {
-  API_URL: "https://openrouter.ai/api/v1/chat/completions",
-  MODEL: "openrouter/free", // Free model on OpenRouter
-  TEMPERATURE: 0.3, // Lower temperature for more deterministic output
-  MAX_TOKENS: 4000,
-  TOP_P: 0.95,
-};
-
-/**
- * Extract text from resume PDF or document
- * @param {File} file - Resume file
- * @returns {Promise<string>} - Extracted text
+ * Extracts plain text from a PDF, DOCX, or TXT File object.
+ *
+ * @param {File} file
+ * @returns {Promise<string>} — extracted text (throws on failure)
  */
 export const extractResumeText = async (file) => {
-  try {
-    // For PDF files, use pdfjs-dist library
-    if (file.type === "application/pdf") {
-      const pdfjsLib = await import("pdfjs-dist");
-      
-      // Set up the worker
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-      
-      // Read the file as ArrayBuffer
+  if (!file) throw new Error("No file provided.");
+
+  // ── Plain text ─────────────────────────────────────────────────────────
+  if (file.type === "text/plain" || file.type === "text/rtf") {
+    return file.text();
+  }
+
+  // ── PDF ────────────────────────────────────────────────────────────────
+  if (file.type === "application/pdf") {
+    try {
       const arrayBuffer = await file.arrayBuffer();
-      
-      // Load the PDF document
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-      
-      // Extract text from all pages
-      let fullText = "";
+
+      // Load document — worker is already configured above via the module-level import
+      const pdf = await pdfjsLib.getDocument({
+        data:             new Uint8Array(arrayBuffer),
+        useWorkerFetch:   false,
+        isEvalSupported:  false,
+        useSystemFonts:   true,
+      }).promise;
+
+      let text = "";
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(" ");
-        fullText += pageText + "\n";
+        const page        = await pdf.getPage(pageNum);
+        const content     = await page.getTextContent();
+        const pageText    = content.items.map((item) => item.str).join(" ");
+        text             += pageText + "\n";
       }
-      
-      return fullText.trim();
-    }
 
-    // For text files
-    if (file.type === "text/plain" || file.type === "text/rtf") {
-      const text = await file.text();
-      return text;
+      const trimmed = text.trim();
+      if (!trimmed) throw new Error("PDF appears to be empty or image-only.");
+      return trimmed;
+    } catch (err) {
+      // Re-throw with a cleaner message
+      throw new Error(`PDF extraction failed: ${err.message}`);
     }
+  }
 
-    // For Word documents and other file types, attempt text extraction
-    console.warn(
-      `File type ${file.type} not fully supported. Attempting text extraction...`,
-    );
+  // ── Word / other — best-effort ─────────────────────────────────────────
+  try {
     const text = await file.text();
+    if (!text.trim()) throw new Error("No readable text found in file.");
     return text;
-  } catch (error) {
-    console.error("Error extracting resume text:", error);
-    throw new Error("Failed to extract text from resume: " + error.message);
+  } catch {
+    throw new Error(
+      `File type "${file.type}" is not supported. Please upload a PDF or TXT file.`
+    );
   }
 };
 
+// ---------------------------------------------------------------------------
+// AI resume parsing via OpenRouter
+// ---------------------------------------------------------------------------
+
 /**
- * Parse resume using OpenRouter API (free models)
- * @param {string} resumeText - Resume text content
- * @returns {Promise<{parsed_data, confidence, error}>}
+ * Sends extracted resume text to the AI and returns structured JSON.
+ *
+ * @param {string} resumeText
+ * @returns {Promise<{ parsed_data: object|null, confidence: number, error: object|null }>}
  */
 export const parseResume = async (resumeText) => {
-  try {
-    if (!resumeText || resumeText.trim().length === 0) {
-      return {
-        parsed_data: null,
-        confidence: 0,
-        error: { message: "Resume text is empty" },
-      };
-    }
+  if (!resumeText?.trim()) {
+    return { parsed_data: null, confidence: 0, error: { message: "Resume text is empty." } };
+  }
 
-    const apiKey = import.meta.env.VITE_AI_API_KEY;
-    
-    if (!apiKey) {
-      return {
-        parsed_data: null,
-        confidence: 0,
-        error: { message: "AI API key not configured. Please add VITE_AI_API_KEY to your .env file." },
-      };
-    }
-
-    const requestBody = {
-      model: AI_CONFIG.MODEL,
-      temperature: AI_CONFIG.TEMPERATURE,
-      max_tokens: AI_CONFIG.MAX_TOKENS,
-      top_p: AI_CONFIG.TOP_P,
-      messages: [
-        {
-          role: "system",
-          content: RESUME_ANALYSIS_SYSTEM_PROMPT,
-        },
-        {
-          role: "user",
-          content: RESUME_ANALYSIS_USER_PROMPT_TEMPLATE(resumeText),
-        },
-      ],
+  const apiKey = import.meta.env.VITE_AI_API_KEY;
+  if (!apiKey) {
+    return {
+      parsed_data: null,
+      confidence:  0,
+      error:       { message: "AI API key not configured. Add VITE_AI_API_KEY to your .env file." },
     };
+  }
 
+  try {
     const response = await fetch(AI_CONFIG.API_URL, {
-      method: "POST",
+      method:  "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "http://localhost:5173", // Required by OpenRouter
-        "X-Title": "StudiHire", // Required by OpenRouter
+        Authorization:  `Bearer ${apiKey}`,
+        "HTTP-Referer": window.location.origin,
+        "X-Title":      "StudiHire",
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        model:       AI_CONFIG.MODEL,
+        temperature: AI_CONFIG.TEMPERATURE,
+        max_tokens:  AI_CONFIG.MAX_TOKENS,
+        top_p:       AI_CONFIG.TOP_P,
+        messages: [
+          { role: "system", content: RESUME_ANALYSIS_SYSTEM_PROMPT },
+          {
+            role:    "user",
+            content: `Analyze this resume and return ONLY JSON:\n\n---\n${resumeText}\n---`,
+          },
+        ],
+      }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      try {
-        const error = JSON.parse(errorText);
-        const errorMessage = error.error?.message || `AI API error: ${response.status}`;
-        
-        // Provide more helpful error messages for common issues
-        if (response.status === 402) {
-          return {
-            parsed_data: null,
-            confidence: 0,
-            error: {
-              message: "AI API: Insufficient balance. Please check your OpenRouter account.",
-              code: "insufficient_balance"
-            },
-          };
-        }
-        
+      const body = await response.text().catch(() => "");
+      if (response.status === 402) {
         return {
           parsed_data: null,
-          confidence: 0,
+          confidence:  0,
           error: {
-            message: errorMessage,
-          },
-        };
-      } catch {
-        return {
-          parsed_data: null,
-          confidence: 0,
-          error: {
-            message: `AI API error: ${response.status} - ${errorText.substring(0, 200)}`,
+            message: "Insufficient AI API balance. Check your OpenRouter account.",
+            code:    "insufficient_balance",
           },
         };
       }
+      return {
+        parsed_data: null,
+        confidence:  0,
+        error: { message: `AI API error ${response.status}: ${body.slice(0, 200)}` },
+      };
     }
 
-    const data = await response.json();
-    const aiResponse = data.choices[0]?.message?.content;
+    const data       = await response.json();
+    const aiResponse = data.choices?.[0]?.message?.content;
 
     if (!aiResponse) {
-      return {
-        parsed_data: null,
-        confidence: 0,
-        error: { message: "No response from AI" },
-      };
+      return { parsed_data: null, confidence: 0, error: { message: "No response from AI." } };
     }
 
-    // Parse the JSON response
+    // Strip markdown fences if the model wrapped the JSON anyway
+    const cleaned = aiResponse
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/, "")
+      .trim();
+
     let parsedJSON;
     try {
-      // Clean the response in case it has markdown code blocks
-      const cleanedResponse = aiResponse
-        .replace(/```json\n?/g, "")
-        .replace(/```\n?/g, "")
-        .trim();
-
-      parsedJSON = JSON.parse(cleanedResponse);
-    } catch (parseError) {
+      parsedJSON = JSON.parse(cleaned);
+    } catch {
       return {
         parsed_data: null,
-        confidence: 0,
-        error: {
-          message: "Failed to parse AI response as JSON",
-        },
+        confidence:  0,
+        error: { message: "AI returned invalid JSON. You can fill the form manually." },
       };
     }
 
-    // Extract confidence score from summary
-    const confidence = parsedJSON.personal_info?.extracted_confidence || 0.8;
-
-    return {
-      parsed_data: parsedJSON,
-      confidence,
-      error: null,
-    };
-  } catch (error) {
+    const confidence = parsedJSON.personal_info?.extracted_confidence ?? 0.8;
+    return { parsed_data: parsedJSON, confidence, error: null };
+  } catch (err) {
     return {
       parsed_data: null,
-      confidence: 0,
-      error: {
-        message: error.message || "Error parsing resume with AI",
-      },
+      confidence:  0,
+      error: { message: err.message || "Unexpected error during AI parsing." },
     };
   }
 };
 
-/**
- * Validate parsed resume data structure
- * @param {object} parsedData - Parsed resume data
- * @returns {boolean}
- */
-export const validateParsedResumeStructure = (parsedData) => {
-  if (!parsedData || typeof parsedData !== "object") return false;
-
-  // Check required top-level fields
-  const requiredFields = [
-    "personal_info",
-    "education",
-    "skills",
-    "experience",
-    "summary",
-  ];
-  return requiredFields.every((field) => field in parsedData);
-};
+// ---------------------------------------------------------------------------
+// Map AI output → onboarding form fields
+// ---------------------------------------------------------------------------
 
 /**
- * Map parsed resume data to student submission form fields
- * @param {object} parsedData - Parsed resume data from DeepSeek
- * @returns {object} - Form-friendly data structure
+ * Converts the AI-parsed resume JSON into the shape the onboarding form expects.
+ *
+ * @param {object} parsedData
+ * @returns {object}
  */
 export const mapParsedResumeToFormData = (parsedData) => {
   if (!parsedData) return {};
 
   return {
-    full_name:
-      parsedData.personal_info?.full_name ||
-      parsedData.summary?.personal_info?.full_name ||
-      "",
-    email: parsedData.personal_info?.email || "",
-    phone_number: parsedData.personal_info?.phone || "",
-    location: parsedData.personal_info?.location || "",
-    bio: parsedData.personal_info?.professional_summary || "",
-    education_level:
-      parsedData.summary?.highest_education_level || "Not specified",
-    experience: parsedData.experience,
-    years_of_experience: parsedData.summary?.total_experience_years || 0,
+    full_name:           parsedData.personal_info?.full_name            ?? "",
+    email:               parsedData.personal_info?.email                ?? "",
+    phone_number:        parsedData.personal_info?.phone                ?? "",
+    location:            parsedData.personal_info?.location             ?? "",
+    bio:                 parsedData.personal_info?.professional_summary ?? "",
+    education_level:     parsedData.summary?.highest_education_level    ?? "Not specified",
+    years_of_experience: parsedData.summary?.total_experience_years     ?? 0,
+    experience:          parsedData.experience                          ?? [],
     skills: {
-      technical: parsedData.skills?.technical || [],
-      soft: parsedData.skills?.soft || [],
-      languages: parsedData.skills?.languages || [],
-      tools: parsedData.skills?.tools_and_platforms || [],
+      technical: parsedData.skills?.technical          ?? [],
+      soft:      parsedData.skills?.soft               ?? [],
+      languages: parsedData.skills?.languages          ?? [],
+      tools:     parsedData.skills?.tools_and_platforms ?? [],
     },
-    certifications: parsedData.certifications || [],
-    projects: parsedData.projects || [],
-    summary: parsedData.summary?.key_skills || [],
+    certifications: parsedData.certifications ?? [],
+    projects:       parsedData.projects       ?? [],
   };
 };
+
+// ---------------------------------------------------------------------------
+// Validation helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Basic structural validation of the parsed resume object.
+ *
+ * @param {object} parsedData
+ * @returns {boolean}
+ */
+export const validateParsedResumeStructure = (parsedData) => {
+  if (!parsedData || typeof parsedData !== "object") return false;
+  return ["personal_info", "education", "skills", "experience", "summary"]
+    .every((field) => field in parsedData);
+};
+
+// Re-export prompts/config for any external use
+export { AI_CONFIG, RESUME_ANALYSIS_SYSTEM_PROMPT };
