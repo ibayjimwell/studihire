@@ -3,59 +3,25 @@ import { useState, useEffect } from "react";
 import { useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import Navbar from "@/components/layout/Navbar";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { gigGetById, gigGetStudentProfile } from "@/api/gigApi";
+import { orderPlace } from "@/api/orderApi";
 import {
   ShieldCheck,
   Clock,
   RefreshCw,
   Loader2,
-  CreditCard,
   CheckCircle,
   ChevronRight,
   ChevronLeft,
   Star,
-  Lock,
-  Smartphone,
-  Building,
-  Wallet,
   ArrowLeft,
+  AlertCircle,
 } from "lucide-react";
 
 const PLATFORM_FEE_PERCENT = 0.1;
-
-const PAYMENT_METHODS = [
-  {
-    id: "gcash",
-    label: "GCash",
-    icon: Smartphone,
-    color: "bg-blue-500",
-    description: "Pay via GCash mobile wallet",
-  },
-  {
-    id: "maya",
-    label: "Maya",
-    icon: Wallet,
-    color: "bg-green-500",
-    description: "Pay via Maya (formerly PayMaya)",
-  },
-  {
-    id: "card",
-    label: "Credit / Debit Card",
-    icon: CreditCard,
-    color: "bg-slate-700",
-    description: "Visa, Mastercard, JCB",
-  },
-  {
-    id: "bank",
-    label: "Online Banking",
-    icon: Building,
-    color: "bg-orange-500",
-    description: "BDO, BPI, UnionBank & more",
-  },
-];
 
 const STEPS = ["Review Order", "Requirements", "Confirm"];
 
@@ -72,6 +38,7 @@ export default function Checkout() {
   const [student, setStudent] = useState(/** @type {any} */ (null));
   const [loading, setLoading] = useState(true);
   const [placing, setPlacing] = useState(false);
+  const [fetchError, setFetchError] = useState(/** @type {string|null} */ (null));
 
   // Form state
   const [requirements, setRequirements] = useState("");
@@ -80,66 +47,35 @@ export default function Checkout() {
   );
 
   useEffect(() => {
-    if (!gigId) return;
+    if (!gigId) {
+      setLoading(false);
+      setFetchError("No gig ID provided.");
+      return;
+    }
 
-    // Dummy gig data
-    const dummyGig = {
-      id: gigId,
-      title: "Professional Logo Design",
-      student_id: "student-001",
-      cover_image_url: null,
-      packages: [
-        {
-          name: "Basic",
-          price: 1500,
-          delivery_days: 3,
-          revisions: 2,
-          features: [
-            "1 initial design",
-            "1 round of revisions",
-            "PNG & JPG formats",
-          ],
-        },
-        {
-          name: "Standard",
-          price: 3000,
-          delivery_days: 5,
-          revisions: 3,
-          features: [
-            "2 initial designs",
-            "3 rounds of revisions",
-            "All formats + vector files",
-            "Commercial license",
-          ],
-        },
-        {
-          name: "Premium",
-          price: 5000,
-          delivery_days: 7,
-          revisions: 5,
-          features: [
-            "3 initial designs",
-            "5 rounds of revisions",
-            "Full branding package",
-            "Unlimited revisions",
-          ],
-        },
-      ],
-    };
+    (async () => {
+      setLoading(true);
+      setFetchError(null);
 
-    // Dummy student profile data
-    const dummyStudent = {
-      id: "student-001",
-      full_name: "Maria Garcia",
-      course: "Computer Science",
-      school_name: "DLSU",
-      rating: 4.8,
-      total_reviews: 142,
-    };
+      // Try to fetch the real gig from Supabase
+      const { gig: gigData, error: gigErr } = await gigGetById(gigId);
 
-    setGig(dummyGig);
-    setStudent(dummyStudent);
-    setLoading(false);
+      if (gigErr || !gigData) {
+        setFetchError("Gig not found or unavailable.");
+        setLoading(false);
+        return;
+      }
+
+      setGig(gigData);
+
+      // Fetch student profile
+      if (gigData.student_id) {
+        const { profile } = await gigGetStudentProfile(gigData.student_id);
+        setStudent(profile ?? null);
+      }
+
+      setLoading(false);
+    })();
   }, [gigId]);
 
   const pkg = gig?.packages?.[pkgIndex];
@@ -167,43 +103,31 @@ export default function Checkout() {
 
     setPlacing(true);
 
-    // Simulate order processing with dummy data
-    const orderId = `order-${Date.now()}`;
-    const dueDate = new Date();
-    dueDate.setDate(dueDate.getDate() + (pkg.delivery_days || 7));
-
-    // Order placed with awaiting_payment status - payment happens when student starts work
-    const dummyOrder = {
-      id: orderId,
+    const result = await orderPlace({
       gig_id: gig.id,
-      gig_title: gig.title,
-      client_id: user?.id || "client-001",
-      client_name: user?.full_name || "Test Client",
       student_id: gig.student_id,
-      student_name: student?.full_name || "",
       package_name: pkg.name,
       package_index: pkgIndex,
       amount,
       platform_fee: platformFee,
-      delivery_days: pkg.delivery_days,
-      revisions: pkg.revisions,
-      requirements,
-      status: "awaiting_payment",
-      due_date: dueDate.toISOString(),
-      created_at: new Date().toISOString(),
-      payment_id: null,
-    };
-
-    console.log("Dummy Order Created (Awaiting Payment):", dummyOrder);
-
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+      delivery_days: pkg.delivery_days || 7,
+      revisions: pkg.revisions || 0,
+      requirements: requirements.trim(),
+      gig_title: gig.title,
+    });
 
     setPlacing(false);
-    navigate(`/order/${orderId}?order=placed`);
+
+    if (result.error) {
+      setErrors({ form: result.error.message || "Failed to place order. Please try again." });
+      return;
+    }
+
+    // Navigate to order success view
+    navigate(`/orders/${result.order.id}?status=placed`);
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
@@ -212,16 +136,28 @@ export default function Checkout() {
         </div>
       </div>
     );
+  }
 
-  if (!gig || !pkg)
+  if (fetchError || !gig || !pkg) {
     return (
       <div className="min-h-screen bg-background">
         <Navbar />
         <div className="text-center py-20 text-muted-foreground">
-          Gig or package not found.
+          <AlertCircle className="w-12 h-12 text-muted-foreground/40 mx-auto mb-3" />
+          <p className="text-lg font-semibold text-foreground mb-1">
+            {fetchError || "Gig or package not found."}
+          </p>
+          <Button
+            variant="outline"
+            className="mt-4"
+            onClick={() => navigate("/gigs")}
+          >
+            Browse Gigs
+          </Button>
         </div>
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -272,6 +208,14 @@ export default function Checkout() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Main content */}
           <div className="lg:col-span-2">
+            {/* Error message */}
+            {errors.form && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-red-700">{errors.form}</p>
+              </div>
+            )}
+
             {/* STEP 0: Review Order */}
             {step === 0 && (
               <div className="space-y-4">
@@ -301,12 +245,11 @@ export default function Checkout() {
                         by {student?.full_name || "Student"}
                       </p>
                       <div className="flex items-center gap-1 mt-1">
-                        {student?.rating > 0 && (
+                        {gig.rating > 0 && (
                           <>
                             <Star className="w-3.5 h-3.5 fill-yellow-400 text-yellow-400" />
                             <span className="text-xs text-muted-foreground">
-                              {student.rating?.toFixed(1)} (
-                              {student.total_reviews} reviews)
+                              {gig.rating?.toFixed(1)} ({gig.total_reviews || 0} reviews)
                             </span>
                           </>
                         )}
@@ -358,7 +301,8 @@ export default function Checkout() {
                           {student.full_name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {student.course} · {student.school_name}
+                          {student.institution || student.school_name || ""}
+                          {student.field_of_study ? ` · ${student.field_of_study}` : ""}
                         </p>
                       </div>
                       <div className="ml-auto text-right">
@@ -466,7 +410,7 @@ export default function Checkout() {
                       Requirements
                     </p>
                     <p className="text-sm text-foreground/80 line-clamp-3">
-                      {requirements}
+                      {requirements || "No specific requirements provided."}
                     </p>
                   </div>
                   <div className="p-4 space-y-2 text-sm">
@@ -492,11 +436,11 @@ export default function Checkout() {
                     <Clock className="w-5 h-5 text-blue-600 shrink-0 mt-0.5" />
                     <div className="text-sm">
                       <p className="font-semibold text-blue-900">
-                        Payment when work starts
+                        Order placed, payment upon start
                       </p>
                       <p className="text-blue-800 text-xs mt-0.5">
-                        Your payment will be collected after the student
-                        approves and starts working on your order.
+                        Your order will be sent to the student. Payment will be
+                        collected when the student starts working on your order.
                       </p>
                     </div>
                   </CardContent>

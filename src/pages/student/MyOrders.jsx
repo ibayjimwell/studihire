@@ -1,10 +1,10 @@
+// @ts-nocheck
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { base44 } from "@/api/mockBase44Client";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { orderGetMyStudentOrders } from "@/api/orderApi";
 import {
   Package,
   LayoutDashboard,
@@ -12,37 +12,20 @@ import {
   MessageSquare,
   DollarSign,
   GraduationCap,
-  Settings,
   Clock,
-  CheckCircle,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
+import { STATUS_DISPLAY_CONFIG } from "@/lib/orderStatusConfig";
 
 const sidebarLinks = [
   { href: "/student/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/student/gigs", label: "My Gigs", icon: Briefcase },
-  { href: "/student/orders", label: "My Orders", icon: Package },
+  { href: "/student/my-orders", label: "My Orders", icon: Package },
   { href: "/messages", label: "Messages", icon: MessageSquare },
   { href: "/student/payments", label: "Earnings", icon: DollarSign },
   { href: "/student/profile", label: "My Profile", icon: GraduationCap },
 ];
-
-const STATUS_CONFIG = {
-  awaiting_payment: {
-    label: "Awaiting Payment",
-    color: "bg-gray-100 text-gray-700",
-  },
-  pending: { label: "Pending", color: "bg-yellow-100 text-yellow-700" },
-  in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700" },
-  revision_requested: {
-    label: "Revision",
-    color: "bg-orange-100 text-orange-700",
-  },
-  delivered: { label: "Delivered", color: "bg-purple-100 text-purple-700" },
-  completed: { label: "Completed", color: "bg-green-100 text-green-700" },
-  cancelled: { label: "Cancelled", color: "bg-red-100 text-red-700" },
-  disputed: { label: "Disputed", color: "bg-red-100 text-red-700" },
-};
 
 export default function StudentMyOrders() {
   const { user } = useCurrentUser();
@@ -52,14 +35,15 @@ export default function StudentMyOrders() {
 
   useEffect(() => {
     if (!user) return;
-    base44.entities.Order.filter(
-      { student_id: user.id },
-      "-created_date",
-      50,
-    ).then((o) => {
-      setOrders(o);
+
+    (async () => {
+      setLoading(true);
+      const { orders: data, error } = await orderGetMyStudentOrders();
+      if (!error) {
+        setOrders(data);
+      }
       setLoading(false);
-    });
+    })();
   }, [user]);
 
   const filtered = orders.filter(
@@ -70,6 +54,10 @@ export default function StudentMyOrders() {
       o.status,
     ),
   ).length;
+
+  const getStatusConfig = (status) => {
+    return STATUS_DISPLAY_CONFIG[status] || STATUS_DISPLAY_CONFIG.awaiting_payment;
+  };
 
   return (
     <DashboardLayout sidebarLinks={sidebarLinks} sidebarTitle="Student">
@@ -88,6 +76,7 @@ export default function StudentMyOrders() {
       <div className="flex gap-2 mb-5 flex-wrap">
         {[
           "all",
+          "awaiting_payment",
           "pending",
           "in_progress",
           "revision_requested",
@@ -98,7 +87,11 @@ export default function StudentMyOrders() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-all ${filter === f ? "bg-primary text-primary-foreground" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-all ${
+              filter === f
+                ? "bg-primary text-primary-foreground"
+                : "bg-white border border-border text-muted-foreground hover:text-foreground"
+            }`}
           >
             {f.replace(/_/g, " ")}
           </button>
@@ -107,6 +100,7 @@ export default function StudentMyOrders() {
 
       {loading ? (
         <div className="text-center py-10 text-muted-foreground">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
           Loading...
         </div>
       ) : filtered.length === 0 ? (
@@ -117,7 +111,7 @@ export default function StudentMyOrders() {
       ) : (
         <div className="space-y-3">
           {filtered.map((o) => {
-            const cfg = STATUS_CONFIG[o.status] || STATUS_CONFIG.pending;
+            const cfg = getStatusConfig(o.status);
             return (
               <div
                 key={o.id}
@@ -139,15 +133,15 @@ export default function StudentMyOrders() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-bold text-primary">
-                    ₱{o.amount?.toLocaleString()}
+                    ₱{Number(o.amount).toLocaleString()}
                   </span>
                   <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.badge}`}
                   >
                     {cfg.label}
                   </span>
                   <Button size="sm" variant="outline" asChild>
-                    <Link to={`/order/${o.id}`}>View</Link>
+                    <Link to={`/orders/${o.id}`}>View</Link>
                   </Button>
                 </div>
               </div>

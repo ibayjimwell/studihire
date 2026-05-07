@@ -43,6 +43,7 @@ import Payments from "./pages/Payments";
 import GetStarted from "./pages/GetStarted";
 import StudentProfile from "./pages/student/Profile";
 import Checkout from "./pages/Checkout";
+import OrderConfirmation from "./pages/OrderConfirmation";
 import OrderWorkspace from "./pages/OrderWorkspace";
 import StudentMyOrders from "./pages/student/MyOrders";
 import StudentOrderWorkspace from "./pages/student/StudentOrderWorkspace";
@@ -226,6 +227,14 @@ const AuthenticatedApp = () => {
         element={
           <ProtectedRoute>
             <Checkout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders/:id"
+        element={
+          <ProtectedRoute>
+            <OrderConfirmation />
           </ProtectedRoute>
         }
       />

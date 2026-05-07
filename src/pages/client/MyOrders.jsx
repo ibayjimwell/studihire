@@ -1,8 +1,10 @@
+// @ts-nocheck
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { useCurrentUser } from "@/lib/useCurrentUser";
+import { orderGetMyClientOrders } from "@/api/orderApi";
 import {
   Package,
   LayoutDashboard,
@@ -11,11 +13,13 @@ import {
   DollarSign,
   Search,
   Clock,
+  Loader2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { STATUS_DISPLAY_CONFIG } from "@/lib/orderStatusConfig";
 
 const sidebarLinks = [
+  { href: "/client/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/client/projects", label: "My Projects", icon: Briefcase },
   { href: "/client/orders", label: "My Orders", icon: Package },
   { href: "/client/applicants", label: "Applicants", icon: Briefcase },
@@ -24,18 +28,6 @@ const sidebarLinks = [
   { href: "/client/payments", label: "Payments", icon: DollarSign },
 ];
 
-// Map shared config to local format
-const STATUS_CONFIG = Object.entries(STATUS_DISPLAY_CONFIG).reduce(
-  (acc, [key, config]) => {
-    acc[key] = {
-      label: config.label,
-      color: config.badge,
-    };
-    return acc;
-  },
-  {},
-);
-
 export default function ClientMyOrders() {
   const { user } = useCurrentUser();
   const [orders, setOrders] = useState([]);
@@ -43,102 +35,26 @@ export default function ClientMyOrders() {
   const [filter, setFilter] = useState("all");
 
   useEffect(() => {
-    // Simulate loading orders with dummy data
-    const dummyOrders = [
-      {
-        id: "order-1",
-        gig_id: "gig-001",
-        gig_title: "Professional Logo Design",
-        client_id: "client-001",
-        student_id: "student-001",
-        student_name: "Maria Garcia",
-        package_name: "Standard",
-        amount: 3000,
-        delivery_days: 5,
-        status: "awaiting_payment",
-        due_date: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 3600000).toISOString(),
-      },
-      {
-        id: "order-2",
-        gig_id: "gig-002",
-        gig_title: "Website Banner Design",
-        client_id: "client-001",
-        student_id: "student-002",
-        student_name: "John Smith",
-        package_name: "Premium",
-        amount: 5000,
-        delivery_days: 7,
-        status: "in_progress",
-        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        id: "order-3",
-        gig_id: "gig-003",
-        gig_title: "Business Card Design",
-        client_id: "client-001",
-        student_id: "student-003",
-        student_name: "Sarah Lee",
-        package_name: "Basic",
-        amount: 1500,
-        delivery_days: 3,
-        status: "delivered",
-        due_date: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 172800000).toISOString(),
-      },
-      {
-        id: "order-4",
-        gig_id: "gig-004",
-        gig_title: "Social Media Graphics",
-        client_id: "client-001",
-        student_id: "student-001",
-        student_name: "Maria Garcia",
-        package_name: "Standard",
-        amount: 3000,
-        delivery_days: 5,
-        status: "completed",
-        due_date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 259200000).toISOString(),
-      },
-      {
-        id: "order-5",
-        gig_id: "gig-005",
-        gig_title: "Flyer Design",
-        client_id: "client-001",
-        student_id: "student-002",
-        student_name: "John Smith",
-        package_name: "Premium",
-        amount: 4500,
-        delivery_days: 4,
-        status: "revision_requested",
-        due_date: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 345600000).toISOString(),
-      },
-      {
-        id: "order-6",
-        gig_id: "gig-001",
-        gig_title: "Professional Logo Design",
-        client_id: "client-001",
-        student_id: "student-003",
-        student_name: "Sarah Lee",
-        package_name: "Basic",
-        amount: 1500,
-        delivery_days: 3,
-        status: "pending",
-        due_date: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString(),
-        created_date: new Date(Date.now() - 86400000).toISOString(),
-      },
-    ];
+    if (!user) return;
 
-    setOrders(dummyOrders);
-    setLoading(false);
-  }, []);
+    (async () => {
+      setLoading(true);
+      const { orders: data, error } = await orderGetMyClientOrders();
+      if (!error) {
+        setOrders(data);
+      }
+      setLoading(false);
+    })();
+  }, [user]);
 
   const filtered = orders.filter(
     (o) => filter === "all" || o.status === filter,
   );
   const deliveredCount = orders.filter((o) => o.status === "delivered").length;
+
+  const getStatusConfig = (status) => {
+    return STATUS_DISPLAY_CONFIG[status] || STATUS_DISPLAY_CONFIG.awaiting_payment;
+  };
 
   return (
     <DashboardLayout sidebarLinks={sidebarLinks} sidebarTitle="Client">
@@ -159,6 +75,7 @@ export default function ClientMyOrders() {
       <div className="flex gap-2 mb-5 flex-wrap">
         {[
           "all",
+          "awaiting_payment",
           "pending",
           "in_progress",
           "delivered",
@@ -168,7 +85,11 @@ export default function ClientMyOrders() {
           <button
             key={f}
             onClick={() => setFilter(f)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-all ${filter === f ? "bg-primary text-primary-foreground" : "bg-white border border-border text-muted-foreground hover:text-foreground"}`}
+            className={`px-3 py-1.5 rounded-full text-sm font-medium capitalize transition-all ${
+              filter === f
+                ? "bg-primary text-primary-foreground"
+                : "bg-white border border-border text-muted-foreground hover:text-foreground"
+            }`}
           >
             {f.replace(/_/g, " ")}
           </button>
@@ -177,6 +98,7 @@ export default function ClientMyOrders() {
 
       {loading ? (
         <div className="text-center py-10 text-muted-foreground">
+          <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
           Loading...
         </div>
       ) : filtered.length === 0 ? (
@@ -190,7 +112,7 @@ export default function ClientMyOrders() {
       ) : (
         <div className="space-y-3">
           {filtered.map((o) => {
-            const cfg = STATUS_CONFIG[o.status] || STATUS_CONFIG.pending;
+            const cfg = getStatusConfig(o.status);
             return (
               <div
                 key={o.id}
@@ -212,15 +134,15 @@ export default function ClientMyOrders() {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <span className="font-bold text-primary">
-                    ₱{o.amount?.toLocaleString()}
+                    ₱{Number(o.amount).toLocaleString()}
                   </span>
                   <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.color}`}
+                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${cfg.badge}`}
                   >
                     {cfg.label}
                   </span>
                   <Button size="sm" variant="outline" asChild>
-                    <Link to={`/order/${o.id}`}>View</Link>
+                    <Link to={`/orders/${o.id}`}>View</Link>
                   </Button>
                 </div>
               </div>
