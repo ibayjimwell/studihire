@@ -7,6 +7,29 @@
 import supabase from "@/lib/supabaseClient";
 
 // ---------------------------------------------------------------------------
+// Helpers — for credential-scored browsing
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch credential scores for batch student IDs.
+ * Used by gigBrowse to sort gigs by student credential quality.
+ */
+const gigFetchCredentialScores = async (studentIds) => {
+  try {
+    if (!studentIds.length) return {};
+    const { data } = await supabase
+      .from("student_profiles")
+      .select("user_id, credential_score, credential_count")
+      .in("user_id", studentIds);
+    const map = {};
+    (data ?? []).forEach((p) => { map[p.user_id] = { score: p.credential_score || 0, count: p.credential_count || 0 }; });
+    return map;
+  } catch {
+    return {};
+  }
+};
+
+// ---------------------------------------------------------------------------
 // Types / constants
 // ---------------------------------------------------------------------------
 
@@ -89,33 +112,45 @@ const validateGig = (gig) => {
 export const gigBrowse = async (options = {}) => {
   try {
     const {
-      search   = "",
-      category = "",
-      sort     = "newest",
-      limit    = 24,
-      offset   = 0,
+      search      = "",
+      category    = "",
+      sort        = "newest",
+      limit       = 24,
+      offset      = 0,
+      student_ids = null,
     } = options;
  
+    // For credential sort, we fetch all matching gigs then sort client-side
+    const isCredentialSort = sort === "credentials";
+    const effectiveSort = isCredentialSort ? "rating" : sort;
+
     const SORT_MAP = {
       newest: { column: "created_at",    ascending: false },
       rating: { column: "rating",        ascending: false },
       orders: { column: "total_orders",  ascending: false },
     };
-    const { column, ascending } = SORT_MAP[sort] ?? SORT_MAP.newest;
- 
+    const { column, ascending } = SORT_MAP[effectiveSort] ?? SORT_MAP.newest;
+
+    // For credential sort, fetch more to allow for credential-based reordering
+    const fetchLimit = isCredentialSort ? Math.min(limit * 3, 100) : limit;
+
     let query = supabase
       .from("gigs")
       .select("*", { count: "exact" })
       .eq("status", "active")
       .order(column, { ascending })
-      .range(offset, offset + limit - 1);
+      .range(offset, offset + fetchLimit - 1);
  
     if (category) {
       query = query.eq("category", category);
     }
  
+    // Filter by specific student IDs (credential-scored browsing)
+    if (student_ids && Array.isArray(student_ids) && student_ids.length > 0) {
+      query = query.in("student_id", student_ids);
+    }
+ 
     if (search.trim()) {
-      // Match title OR any element inside the skills_required text array
       query = query.or(
         `title.ilike.%${search.trim()}%,skills_required.cs.{${search.trim()}}`
       );
@@ -123,7 +158,36 @@ export const gigBrowse = async (options = {}) => {
  
     const { data, count, error } = await query;
     if (error) return { gigs: [], count: 0, error };
-    return { gigs: data ?? [], count: count ?? 0, error: null };
+
+    let gigs = data ?? [];
+
+    // ── Credential sort: fetch student credential scores and reorder ─────
+    if (isCredentialSort && gigs.length > 0) {
+      const uniqueStudentIds = [...new Set(gigs.map((g) => g.student_id).filter(Boolean))];
+      const { data: profiles } = await supabase
+        .from("student_profiles")
+        .select("user_id, credential_score")
+        .in("user_id", uniqueStudentIds);
+
+      const scoreMap = {};
+      (profiles ?? []).forEach((p) => { scoreMap[p.user_id] = p.credential_score || 0; });
+
+      // Sort by credential_score DESC, then by rating DESC, then by orders DESC
+      gigs.sort((a, b) => {
+        const scoreA = scoreMap[a.student_id] || 0;
+        const scoreB = scoreMap[b.student_id] || 0;
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        const ratingA = a.avg_rating || a.rating || 0;
+        const ratingB = b.avg_rating || b.rating || 0;
+        if (ratingB !== ratingA) return ratingB - ratingA;
+        return (b.total_orders || 0) - (a.total_orders || 0);
+      });
+
+      // Trim back to requested limit after reordering
+      gigs = gigs.slice(0, limit);
+    }
+
+    return { gigs, count: count ?? 0, error: null };
   } catch (err) {
     return { gigs: [], count: 0, error: { message: err.message || "Failed to fetch gigs." } };
   }

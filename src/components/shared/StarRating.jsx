@@ -10,14 +10,14 @@ export default function StarRating({ rating = 0, max = 5, size = 'sm', showValue
             key={i}
             className={cn(
               'fill-current',
-              size === 'sm' ? 'w-3.5 h-3.5' : 'w-5 h-5',
+              size === 'xs' ? 'w-2.5 h-2.5' : size === 'sm' ? 'w-3.5 h-3.5' : 'w-5 h-5',
               i < Math.floor(rating) ? 'text-yellow-400' : 'text-gray-200'
             )}
           />
         ))}
       </div>
       {showValue && (
-        <span className={cn('font-medium text-foreground', size === 'sm' ? 'text-xs' : 'text-sm')}>
+        <span className={cn('font-medium text-foreground', size === 'xs' ? 'text-[10px]' : size === 'sm' ? 'text-xs' : 'text-sm')}>
           {rating.toFixed(1)}
         </span>
       )}

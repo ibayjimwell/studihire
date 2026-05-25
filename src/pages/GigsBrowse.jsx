@@ -4,6 +4,7 @@ import Navbar from "@/components/layout/Navbar";
 import GigCard from "@/components/shared/GigCard";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -12,53 +13,84 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { gigBrowse, gigFetchStudentProfiles } from "@/api/gigApi";
+import { credentialFilterStudents } from "@/api/credentialApi";
 import { CATEGORIES } from "@/lib/roles";
-import { Search } from "lucide-react";
+import { Search, Award } from "lucide-react";
 
 // Map UI values → gigBrowse sort keys
 const SORT_OPTIONS = [
   { value: "newest", label: "Newest First" },
   { value: "rating", label: "Highest Rated" },
   { value: "orders", label: "Most Orders" },
+  { value: "credentials", label: "Best Credentials" },
+];
+
+const CREDENTIAL_FILTERS = [
+  { value: 0, label: "Any Credentials" },
+  { value: 30, label: "Verified (30+)" },
+  { value: 60, label: "Strong (60+)" },
+  { value: 80, label: "Top Credentials (80+)" },
 ];
 
 export default function GigsBrowse() {
   const [searchParams, setSearchParams] = useSearchParams();
 
   // ── Controlled filter state driven from URL params ─────────────────────
-  const [search,   setSearch]   = useState(searchParams.get("search")   ?? "");
+  const [search, setSearch] = useState(searchParams.get("search") ?? "");
   const [category, setCategory] = useState(searchParams.get("category") ?? "");
-  const [sort,     setSort]     = useState(searchParams.get("sort")      ?? "newest");
+  const [sort, setSort] = useState(searchParams.get("sort") ?? "credentials");
+  const [credentialFilter, setCredentialFilter] = useState(
+    Number(searchParams.get("credential_filter") || 0),
+  );
 
   // ── Data state ──────────────────────────────────────────────────────────
-  const [gigs,       setGigs]       = useState([]);
+  const [gigs, setGigs] = useState([]);
   const [profileMap, setProfileMap] = useState({});
-  const [count,      setCount]      = useState(0);
-  const [loading,    setLoading]    = useState(true);
-  const [error,      setError]      = useState(null);
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  // Debounce search input so we don't fire on every keystroke
+  // Debounce search input
   const searchDebounceRef = useRef(null);
 
   // ── Sync filters → URL ──────────────────────────────────────────────────
   useEffect(() => {
     const params = {};
-    if (search)   params.search   = search;
+    if (search) params.search = search;
     if (category) params.category = category;
-    if (sort && sort !== "newest") params.sort = sort;
+    if (sort && sort !== "credentials") params.sort = sort;
+    if (credentialFilter > 0) params.credential_filter = String(credentialFilter);
     setSearchParams(params, { replace: true });
-  }, [search, category, sort]);
+  }, [search, category, sort, credentialFilter]);
 
   // ── Fetch gigs whenever filters change ──────────────────────────────────
   const fetchGigs = useCallback(async () => {
     setLoading(true);
     setError(null);
 
+    // If credential filter is active, first get eligible student IDs
+    let studentIdFilter = null;
+    if (credentialFilter > 0) {
+      const { studentIds } = await credentialFilterStudents({
+        search: credentialFilter > 30 ? "" : search,
+        min_credential_score: credentialFilter,
+      });
+      if (studentIds.length === 0) {
+        setGigs([]);
+        setCount(0);
+        setProfileMap({});
+        setLoading(false);
+        return;
+      }
+      studentIdFilter = studentIds;
+    }
+
     const { gigs: data, count: total, error: fetchError } = await gigBrowse({
       search,
       category,
-      sort,
+      sort: sort === "credentials" ? "rating" : sort,
       limit: 24,
+      student_ids: studentIdFilter,
     });
 
     if (fetchError) {
@@ -71,21 +103,23 @@ export default function GigsBrowse() {
     setCount(total);
 
     // Batch-load student profiles for every unique student_id in results
-    const uniqueIds = [...new Set(data.map((g) => g.student_id).filter(Boolean))];
+    const uniqueIds = [
+      ...new Set(data.map((g) => g.student_id).filter(Boolean)),
+    ];
     const { profileMap: map } = await gigFetchStudentProfiles(uniqueIds);
     setProfileMap(map);
 
     setLoading(false);
-  }, [search, category, sort]);
+  }, [search, category, sort, credentialFilter]);
 
-  useEffect(() => { fetchGigs(); }, [fetchGigs]);
+  useEffect(() => {
+    fetchGigs();
+  }, [fetchGigs]);
 
   // ── Handlers ─────────────────────────────────────────────────────────────
   const handleSearchChange = (e) => {
     const value = e.target.value;
-    // Update input immediately for responsiveness
     setSearch(value);
-    // Debounce the actual query by 350ms
     clearTimeout(searchDebounceRef.current);
     searchDebounceRef.current = setTimeout(() => {
       setSearch(value);
@@ -99,10 +133,12 @@ export default function GigsBrowse() {
   const clearFilters = () => {
     setSearch("");
     setCategory("");
-    setSort("newest");
+    setSort("credentials");
+    setCredentialFilter(0);
   };
 
-  const hasActiveFilters = search || category || sort !== "newest";
+  const hasActiveFilters =
+    search || category || sort !== "credentials" || credentialFilter > 0;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -144,12 +180,31 @@ export default function GigsBrowse() {
                 ))}
               </SelectContent>
             </Select>
+
+            {/* Credential filter */}
+            <Select
+              value={String(credentialFilter)}
+              onValueChange={(v) => setCredentialFilter(Number(v))}
+            >
+              <SelectTrigger className="w-full sm:w-52 bg-white text-sm h-10">
+                <SelectValue placeholder="Any Credentials" />
+              </SelectTrigger>
+              <SelectContent>
+                {CREDENTIAL_FILTERS.map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    <span className="flex items-center gap-2">
+                      <Award className="w-3.5 h-3.5 text-yellow-500" />
+                      {o.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 md:py-8">
-
         {/* ── Category pill filters ── */}
         <div className="flex gap-2 flex-wrap mb-6 overflow-x-auto pb-1">
           <button
@@ -176,6 +231,25 @@ export default function GigsBrowse() {
             </button>
           ))}
         </div>
+
+        {/* ── Active credential badge ── */}
+        {credentialFilter > 0 && (
+          <div className="mb-4">
+            <Badge
+              variant="secondary"
+              className="gap-1.5 py-1.5 px-3 text-xs"
+            >
+              <Award className="w-3 h-3 text-yellow-500" />
+              Credential filter: {CREDENTIAL_FILTERS.find((f) => f.value === credentialFilter)?.label}
+              <button
+                onClick={() => setCredentialFilter(0)}
+                className="ml-1 text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </Badge>
+          </div>
+        )}
 
         {/* ── Result meta row ── */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
@@ -210,14 +284,16 @@ export default function GigsBrowse() {
         {/* ── Loading skeletons ── */}
         {loading && !error && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-            {Array(8).fill(0).map((_, i) => (
-              <div key={i} className="space-y-3">
-                <Skeleton className="aspect-video rounded-xl" />
-                <Skeleton className="h-4 w-3/4" />
-                <Skeleton className="h-4 w-1/2" />
-                <Skeleton className="h-4 w-1/3" />
-              </div>
-            ))}
+            {Array(8)
+              .fill(0)
+              .map((_, i) => (
+                <div key={i} className="space-y-3">
+                  <Skeleton className="aspect-video rounded-xl" />
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-4 w-1/2" />
+                  <Skeleton className="h-4 w-1/3" />
+                </div>
+              ))}
           </div>
         )}
 

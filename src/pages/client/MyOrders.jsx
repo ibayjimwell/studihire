@@ -142,7 +142,7 @@ export default function ClientMyOrders() {
                     {cfg.label}
                   </span>
                   <Button size="sm" variant="outline" asChild>
-                    <Link to={`/orders/${o.id}`}>View</Link>
+                    <Link to={`/order/${o.id}`}>View Order Workspace</Link>
                   </Button>
                 </div>
               </div>

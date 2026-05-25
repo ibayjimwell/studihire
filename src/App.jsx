@@ -42,6 +42,7 @@ import Messages from "./pages/Messages";
 import Payments from "./pages/Payments";
 import GetStarted from "./pages/GetStarted";
 import StudentProfile from "./pages/student/Profile";
+import PublicStudentProfile from "./pages/PublicStudentProfile";
 import Checkout from "./pages/Checkout";
 import OrderConfirmation from "./pages/OrderConfirmation";
 import OrderWorkspace from "./pages/OrderWorkspace";
@@ -320,6 +321,9 @@ const AuthenticatedApp = () => {
           </ProtectedRoute>
         }
       />
+
+      {/* Public Student Profile — must be LAST to avoid catching protected routes */}
+      <Route path="/student/:id" element={<PublicStudentProfile />} />
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>

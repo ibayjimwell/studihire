@@ -56,7 +56,7 @@ export default function GigCard({ gig, student }) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <Link to={`/student/${student?.id}`}>
+            <Link to={`/student/${student?.user_id}`}>
               <p className="text-xs sm:text-sm font-medium text-foreground hover:text-primary transition-colors truncate">
                 {student?.full_name || "Unknown"}
               </p>

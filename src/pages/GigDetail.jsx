@@ -6,16 +6,24 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import Navbar from "@/components/layout/Navbar";
 import StarRating from "@/components/shared/StarRating";
 import VerificationBadge from "@/components/shared/VerificationBadge";
+import { useAuth } from "@/lib/AuthContext";
 import {
   gigGetById,
   gigGetStudentProfile,
   gigGetReviews,
 } from "@/api/gigApi";
 import { chatStartConversation } from "@/api/chatApi";
+import {
+  commentGetByGig,
+  commentCreate,
+  commentToggleLike,
+  commentDelete,
+} from "@/api/commentApi";
 import {
   Clock,
   RefreshCw,
@@ -24,6 +32,12 @@ import {
   ArrowRight,
   AlertCircle,
   GraduationCap,
+  Heart,
+  Reply,
+  Trash2,
+  Send,
+  Loader2,
+  MessageCircle,
 } from "lucide-react";
 
 // ---------------------------------------------------------------------------
@@ -83,7 +97,6 @@ function OrderCard({ pkg, onOrder, onContact }) {
   return (
     <Card className="border-border shadow-lg sticky top-4">
       <CardContent className="p-5 space-y-4">
-        {/* Package name + price */}
         <div className="flex items-center justify-between">
           <span className="font-semibold text-foreground">{pkg.name}</span>
           <span className="text-2xl font-bold text-primary">
@@ -91,14 +104,12 @@ function OrderCard({ pkg, onOrder, onContact }) {
           </span>
         </div>
 
-        {/* Package description */}
         {pkg.description && (
           <p className="text-sm text-muted-foreground leading-relaxed">
             {pkg.description}
           </p>
         )}
 
-        {/* Delivery + revisions */}
         <div className="flex gap-5 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5">
             <Clock className="w-4 h-4 shrink-0" />
@@ -110,7 +121,6 @@ function OrderCard({ pkg, onOrder, onContact }) {
           </span>
         </div>
 
-        {/* Feature list */}
         {pkg.features?.length > 0 && (
           <ul className="space-y-1.5">
             {pkg.features.map((f, i) => (
@@ -137,6 +147,279 @@ function OrderCard({ pkg, onOrder, onContact }) {
         </Button>
       </CardContent>
     </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Comments Section
+// ---------------------------------------------------------------------------
+function CommentsSection({ gigId }) {
+  const { user } = useAuth();
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newComment, setNewComment] = useState("");
+  const [replyTo, setReplyTo] = useState(null);
+  const [replyContent, setReplyContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    loadComments();
+  }, [gigId]);
+
+  const loadComments = async () => {
+    setLoading(true);
+    const { comments: data } = await commentGetByGig(gigId);
+    setComments(data);
+    setLoading(false);
+  };
+
+  const handleSubmitComment = async () => {
+    if (!newComment.trim() || !user) return;
+    setSubmitting(true);
+    const { comment, error } = await commentCreate({
+      gig_id: gigId,
+      content: newComment.trim(),
+    });
+    if (!error && comment) {
+      setNewComment("");
+      loadComments();
+    }
+    setSubmitting(false);
+  };
+
+  const handleSubmitReply = async (parentId) => {
+    if (!replyContent.trim() || !user) return;
+    setSubmitting(true);
+    const { comment, error } = await commentCreate({
+      gig_id: gigId,
+      content: replyContent.trim(),
+      parent_id: parentId,
+    });
+    if (!error && comment) {
+      setReplyContent("");
+      setReplyTo(null);
+      loadComments();
+    }
+    setSubmitting(false);
+  };
+
+  const handleToggleLike = async (commentId) => {
+    if (!user) return;
+    const { liked, like_count } = await commentToggleLike(commentId);
+    // Optimistic update
+    setComments((prev) =>
+      prev.map((c) => {
+        if (c.id === commentId) {
+          return { ...c, is_liked: liked, like_count };
+        }
+        if (c.replies) {
+          return {
+            ...c,
+            replies: c.replies.map((r) =>
+              r.id === commentId ? { ...r, is_liked: liked, like_count } : r,
+            ),
+          };
+        }
+        return c;
+      }),
+    );
+  };
+
+  const handleDelete = async (commentId) => {
+    if (!user) return;
+    await commentDelete(commentId);
+    loadComments();
+  };
+
+  const CommentItem = ({ comment, isReply = false }) => (
+    <div className={`flex gap-3 ${isReply ? "ml-10 mt-3" : "mt-4"}`}>
+      <Avatar className="w-8 h-8 shrink-0">
+        <AvatarFallback className="text-xs bg-primary/10 text-primary font-medium">
+          {comment.user_full_name?.[0] || "U"}
+        </AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <div className="bg-white border border-border rounded-xl p-3">
+          <div className="flex items-center justify-between gap-2 mb-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-semibold text-foreground">
+                {comment.user_full_name || "User"}
+              </span>
+              {comment.user_role && (
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4">
+                  {comment.user_role}
+                </Badge>
+              )}
+              <span className="text-[10px] text-muted-foreground">
+                {new Date(comment.created_at).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+              {comment.is_edited && (
+                <span className="text-[10px] text-muted-foreground italic">
+                  (edited)
+                </span>
+              )}
+            </div>
+            {user?.id === comment.user_id && (
+              <button
+                onClick={() => handleDelete(comment.id)}
+                className="text-muted-foreground/40 hover:text-red-500 transition-colors shrink-0"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-foreground/80 leading-relaxed whitespace-pre-wrap">
+            {comment.content}
+          </p>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-3 mt-1 ml-1">
+          <button
+            onClick={() => handleToggleLike(comment.id)}
+            className={`flex items-center gap-1 text-xs transition-colors ${
+              comment.is_liked
+                ? "text-red-500"
+                : "text-muted-foreground hover:text-red-400"
+            }`}
+            disabled={!user}
+          >
+            <Heart
+              className={`w-3.5 h-3.5 ${
+                comment.is_liked ? "fill-red-500" : ""
+              }`}
+            />
+            {comment.like_count > 0 && <span>{comment.like_count}</span>}
+          </button>
+          {!isReply && (
+            <button
+              onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Reply className="w-3.5 h-3.5" />
+              Reply
+            </button>
+          )}
+        </div>
+
+        {/* Reply form */}
+        {replyTo === comment.id && (
+          <div className="mt-2 ml-1 flex gap-2">
+            <Textarea
+              placeholder="Write a reply..."
+              rows={2}
+              value={replyContent}
+              onChange={(e) => setReplyContent(e.target.value)}
+              className="text-sm min-h-0"
+            />
+            <div className="flex flex-col gap-1">
+              <Button
+                size="sm"
+                className="gradient-primary text-white border-0 h-8"
+                onClick={() => handleSubmitReply(comment.id)}
+                disabled={submitting || !replyContent.trim()}
+              >
+                {submitting ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Send className="w-3 h-3" />
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-8 text-xs"
+                onClick={() => {
+                  setReplyTo(null);
+                  setReplyContent("");
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Nested replies */}
+        {comment.replies?.map((reply) => (
+          <CommentItem key={reply.id} comment={reply} isReply />
+        ))}
+      </div>
+    </div>
+  );
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map((i) => (
+          <Skeleton key={i} className="h-16 w-full rounded-xl" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4 mt-5">
+      <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+        <MessageCircle className="w-4 h-4 text-primary" />
+        Comments ({comments.length})
+      </h3>
+
+      {/* New comment form */}
+      {user && (
+        <div className="flex gap-3">
+          <Avatar className="w-8 h-8 shrink-0 mt-1">
+            <AvatarFallback className="text-xs bg-primary/10 text-primary font-medium">
+              {user.full_name?.[0] || "U"}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 flex gap-2">
+            <Textarea
+              placeholder="Ask a question or leave a comment..."
+              rows={2}
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              className="text-sm min-h-0"
+            />
+            <Button
+              size="sm"
+              className="gradient-primary text-white border-0 shrink-0 self-end h-8"
+              onClick={handleSubmitComment}
+              disabled={submitting || !newComment.trim()}
+            >
+              {submitting ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <Send className="w-3 h-3" />
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {!user && (
+        <p className="text-xs text-muted-foreground text-center py-2">
+          <a href="/auth/login" className="text-primary hover:underline">
+            Log in
+          </a>{" "}
+          to leave a comment
+        </p>
+      )}
+
+      {/* Comments list */}
+      {comments.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-6">
+          No comments yet. Be the first to ask a question!
+        </p>
+      ) : (
+        comments.map((comment) => (
+          <CommentItem key={comment.id} comment={comment} />
+        ))
+      )}
+    </div>
   );
 }
 
@@ -173,8 +456,6 @@ export default function GigDetail() {
       setGig(g);
       setReviews(revs);
 
-      // Load student profile independently — a missing profile shouldn't
-      // block the gig from rendering.
       if (g.student_id) {
         const { profile } = await gigGetStudentProfile(g.student_id);
         setStudent(profile ?? null);
@@ -199,10 +480,8 @@ export default function GigDetail() {
         gigTitle: gig.title,
       });
 
-      // Navigate to messages — the conversation will be there
       navigate("/messages");
     } catch (err) {
-      // Fallback: just go to messages if conversation creation fails
       navigate("/messages");
     }
   };
@@ -329,12 +608,16 @@ export default function GigDetail() {
               </div>
             )}
 
-            {/* Tabs: Description / Reviews / FAQ */}
+            {/* Tabs: Description / Reviews / FAQ / Comments */}
             <Tabs defaultValue="description">
               <TabsList className="bg-muted">
                 <TabsTrigger value="description">Description</TabsTrigger>
                 <TabsTrigger value="reviews">
                   Reviews ({reviews.length})
+                </TabsTrigger>
+                <TabsTrigger value="comments">
+                  <MessageCircle className="w-3.5 h-3.5 mr-1" />
+                  Comments
                 </TabsTrigger>
                 {gig.faq?.length > 0 && (
                   <TabsTrigger value="faq">FAQ</TabsTrigger>
@@ -393,6 +676,11 @@ export default function GigDetail() {
                     </div>
                   ))
                 )}
+              </TabsContent>
+
+              {/* Comments with Likes */}
+              <TabsContent value="comments" className="mt-5">
+                <CommentsSection gigId={id} />
               </TabsContent>
 
               {/* FAQ */}
